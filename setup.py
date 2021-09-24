@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (C) 2019-2021  The Software Heritage developers
+# Copyright (C) 2021 The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -55,7 +55,12 @@ setup(
     use_scm_version=True,
     extras_require={"testing": parse_requirements("test")},
     include_package_data=True,
-    entry_points="""""",
+    entry_points="""
+        [swh.workers]
+        loader.bzr=swh.loader.bzr:register
+        [console_scripts]
+        swh-bzr-identify=swh.loader.bzr.identify:main
+    """,
     classifiers=[
         "Programming Language :: Python :: 3",
         "Intended Audience :: Developers",
@@ -66,7 +71,7 @@ setup(
     project_urls={
         "Bug Reports": "https://forge.softwareheritage.org/maniphest",
         "Funding": "https://www.softwareheritage.org/donate",
-        "Source": "https://forge.softwareheritage.org/source/swh-loader-bzr",
-        "Documentation": "https://docs.softwareheritage.org/devel/swh-loader-bzr/",
+        "Source": ("https://forge.softwareheritage.org/source/swh-loader-bzr"),
+        "Documentation": "https://docs.softwareheritage.org/devel/swh-loader-bzr/",  # NoQA: E501
     },
 )

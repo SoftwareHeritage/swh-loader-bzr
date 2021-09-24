@@ -48,4 +48,3 @@ repos:
 #     entry: pydocstyle --convention=google
 #     language: python
 #     types: [python]
-
