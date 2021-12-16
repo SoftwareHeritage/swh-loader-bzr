@@ -1,4 +1,4 @@
-.. _swh-py-template:
+.. _swh-loader-bzr:
 
 .. include:: README.rst
 
@@ -6,6 +6,7 @@
    :maxdepth: 2
    :caption: Contents:
 
+   how-bzr-works
 
 Indices and tables
 ------------------
