@@ -23,7 +23,7 @@ from breezy.revision import Revision as BzrRevision
 
 from swh.loader.core.loader import BaseLoader
 from swh.loader.core.utils import clean_dangling_folders, clone_with_timeout
-from swh.model import from_disk
+from swh.model import from_disk, swhids
 from swh.model.model import (
     Content,
     ExtID,
@@ -40,6 +40,7 @@ from swh.model.model import (
     Timestamp,
     TimestampWithTimezone,
 )
+from swh.storage.algos.snapshot import snapshot_get_latest
 from swh.storage.interface import StorageInterface
 
 TEMPORARY_DIR_PREFIX_PATTERN = "swh.loader.bzr.from_disk"
@@ -159,6 +160,9 @@ class BazaarLoader(BaseLoader):
         # Revisions that are pointed to, but don't exist in the current branch
         # Rare, but exist usually for cross-VCS references.
         self._ghosts: Set[BzrRevisionId] = set()
+        # Exists if in an incremental run, is the latest saved revision from
+        # this origin
+        self._latest_head: Optional[BzrRevisionId] = None
         self._load_status = "eventful"
 
         self.origin_url = url
@@ -189,6 +193,9 @@ class BazaarLoader(BaseLoader):
         """Second step executed by the loader to prepare some state needed by
         the loader.
         """
+        latest_snapshot = snapshot_get_latest(self.storage, self.origin_url)
+        if latest_snapshot:
+            self._set_recorded_state(latest_snapshot)
 
     def load_status(self) -> Dict[str, str]:
         """Detailed loading status.
@@ -202,6 +209,37 @@ class BazaarLoader(BaseLoader):
         return {
             "status": self._load_status,
         }
+
+    def _set_recorded_state(self, latest_snapshot: Snapshot) -> None:
+        head = latest_snapshot.branches[b"trunk"]
+        bzr_head = self._get_extids_for_targets([head.target])[0].extid
+        self._latest_head = BzrRevisionId(bzr_head)
+
+    def _get_extids_for_targets(self, targets: List[Sha1Git]) -> List[ExtID]:
+        """Get all Bzr ExtIDs for the targets in the latest snapshot"""
+        extids = []
+        for extid in self.storage.extid_get_from_target(
+            swhids.ObjectType.REVISION,
+            targets,
+            extid_type=EXTID_TYPE,
+            extid_version=EXTID_VERSION,
+        ):
+            extids.append(extid)
+            self._revision_id_to_sha1git[
+                BzrRevisionId(extid.extid)
+            ] = extid.target.object_id
+
+        if extids:
+            # Filter out dangling extids, we need to load their target again
+            revisions_missing = self.storage.revision_missing(
+                [extid.target.object_id for extid in extids]
+            )
+            extids = [
+                extid
+                for extid in extids
+                if extid.target.object_id not in revisions_missing
+            ]
+        return extids
 
     def cleanup(self) -> None:
         if self.repo is not None:
@@ -438,7 +476,28 @@ class BazaarLoader(BaseLoader):
             ancestry.append((rev, parents))
 
         sorter = tsort.TopoSorter(ancestry)
-        return sorter.sorted()
+        all_revisions = sorter.sorted()
+        if self._latest_head is not None:
+            # Breezy does not offer a generic querying system, so we do the
+            # filtering ourselves, which is simple enough given that bzr does
+            # not have multiple heads per branch
+            found = False
+            new_revisions = []
+            # Filter out revisions until we reach the one we've already seen
+            for rev in all_revisions:
+                if not found:
+                    if rev == self._latest_head:
+                        found = True
+                else:
+                    new_revisions.append(rev)
+            if not found and all_revisions:
+                # The previously saved head has been uncommitted, reload
+                # everything
+                msg = "Previous head (%s) not found, loading all revisions"
+                self.log.debug(msg, self._latest_head)
+                return all_revisions
+            return new_revisions
+        return all_revisions
 
     def _iterate_ancestors(self, rev: BzrRevision) -> Iterator[BzrRevisionId]:
         """Return an iterator of this revision's ancestors"""
@@ -503,7 +562,18 @@ class BazaarLoader(BaseLoader):
 
     def _get_revision_id_from_bzr_id(self, bzr_id: BzrRevisionId) -> Sha1Git:
         """Return the git sha1 of a revision given its bazaar revision id."""
-        return self._revision_id_to_sha1git[bzr_id]
+        from_cache = self._revision_id_to_sha1git.get(bzr_id)
+        if from_cache is not None:
+            return from_cache
+        # The parent was not loaded in this run, get it from storage
+        from_storage = self.storage.extid_get_from_extid(
+            EXTID_TYPE, ids=[bzr_id], version=EXTID_VERSION
+        )
+
+        if len(from_storage) != 1:
+            msg = "Expected 1 match from storage for bzr node %r, got %d"
+            raise LookupError(msg % (bzr_id.hex(), len(from_storage)))
+        return from_storage[0].target.object_id
 
     @property
     def branch(self) -> BzrBranch:
