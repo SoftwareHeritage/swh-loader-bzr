@@ -1,0 +1,6 @@
+
+        [swh.workers]
+        loader.bzr=swh.loader.bzr:register
+        [console_scripts]
+        swh-bzr-identify=swh.loader.bzr.identify:main
+    
