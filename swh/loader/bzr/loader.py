@@ -14,7 +14,7 @@ from typing import Dict, Iterator, List, NewType, Optional, Set, TypeVar, Union
 
 from breezy import errors as bzr_errors
 from breezy import repository, tsort
-from breezy.builtins import cmd_clone
+from breezy.builtins import cmd_branch
 from breezy.bzr import bzrdir
 from breezy.bzr.branch import Branch as BzrBranch
 from breezy.bzr.inventory import Inventory, InventoryEntry
@@ -263,7 +263,13 @@ class BazaarLoader(BaseLoader):
             self.log.debug(
                 msg, self.origin_url, self._repo_directory, self._clone_timeout
             )
-            closure = partial(cmd_clone().run, self.origin_url, self._repo_directory)
+            closure = partial(
+                cmd_branch().run,
+                self.origin_url,
+                self._repo_directory,
+                no_tree=True,
+                use_existing_dir=True,
+            )
             clone_with_timeout(
                 self.origin_url, self._repo_directory, closure, self._clone_timeout
             )
