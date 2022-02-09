@@ -163,6 +163,10 @@ def test_empty(swh_storage, datadir, tmp_path):
     res = BazaarLoader(swh_storage, repo_url, directory=repo_url).load()
     assert res == {"status": "uneventful"}
 
+    # Empty snapshot does not bother the incremental code
+    res = BazaarLoader(swh_storage, repo_url, directory=repo_url).load()
+    assert res == {"status": "uneventful"}
+
 
 def test_renames(swh_storage, datadir, tmp_path):
     archive_path = Path(datadir, "renames.tgz")

@@ -8,6 +8,7 @@ from Bazaar or Breezy.
 """
 from datetime import datetime
 from functools import lru_cache, partial
+import itertools
 import os
 from tempfile import mkdtemp
 from typing import Dict, Iterator, List, NewType, Optional, Set, TypeVar, Union
@@ -18,8 +19,10 @@ from breezy.builtins import cmd_branch
 from breezy.bzr import bzrdir
 from breezy.bzr.branch import Branch as BzrBranch
 from breezy.bzr.inventory import Inventory, InventoryEntry
+from breezy.bzr.inventorytree import InventoryTreeChange
 from breezy.revision import NULL_REVISION
 from breezy.revision import Revision as BzrRevision
+from breezy.tree import Tree
 
 from swh.loader.core.loader import BaseLoader
 from swh.loader.core.utils import clean_dangling_folders, clone_with_timeout
@@ -128,6 +131,21 @@ class BzrDirectory(from_disk.Directory):
             return default
 
 
+def sort_changes(change: InventoryTreeChange) -> str:
+    """Key function for sorting the changes by path.
+
+    Sorting allows us to group the folders together (for example "b", then "a/a",
+    then "a/b"). Reversing this sort in the `sorted()` call will make it
+    so the files appear before the folder ("a/a", then "a") if the folder has
+    changed. This removes a bug where the order of operations is:
+
+        - "a" goes from directory to file, removing all of its subtree
+        - "a/a" is removed, but our structure has already forgotten it"""
+    source_path, target_path = change.path
+    # Neither path can be the empty string
+    return source_path or target_path
+
+
 class BazaarLoader(BaseLoader):
     """Loads a Bazaar repository"""
 
@@ -156,6 +174,9 @@ class BazaarLoader(BaseLoader):
         self._last_root = BzrDirectory()
         self._tags: Optional[Dict[bytes, BzrRevisionId]] = None
         self._head_revision_id: Optional[bytes] = None
+        # Remember the previous revision to only compute the delta between
+        # revisions
+        self._prev_revision: Optional[BzrRevision] = None
         self._branch: Optional[BzrBranch] = None
         # Revisions that are pointed to, but don't exist in the current branch
         # Rare, but exist usually for cross-VCS references.
@@ -211,6 +232,9 @@ class BazaarLoader(BaseLoader):
         }
 
     def _set_recorded_state(self, latest_snapshot: Snapshot) -> None:
+        if not latest_snapshot.branches:
+            # Last snapshot was empty
+            return
         head = latest_snapshot.branches[b"trunk"]
         bzr_head = self._get_extids_for_targets([head.target])[0].extid
         self._latest_head = BzrRevisionId(bzr_head)
@@ -405,10 +429,45 @@ class BazaarLoader(BaseLoader):
         )
 
     def store_directories(self, bzr_rev: BzrRevision) -> Sha1Git:
+        """Store a revision's directories."""
         repo: repository.Repository = self.repo
         inventory: Inventory = repo.get_inventory(bzr_rev.revision_id)
-        self._store_directories_slow(bzr_rev, inventory)
-        return self._store_tree(inventory)
+        if self._prev_revision is None:
+            self._store_directories_slow(bzr_rev, inventory)
+            return self._store_tree(bzr_rev)
+
+        old_tree = self._get_revision_tree(self._prev_revision.revision_id)
+        new_tree = self._get_revision_tree(bzr_rev.revision_id)
+
+        delta = new_tree.changes_from(old_tree)
+
+        if delta.renamed or delta.copied:
+            # Figuring out all nested and possibly conflicting renames is a lot
+            # of effort for very few revisions, just go the slow way
+            self._store_directories_slow(bzr_rev, inventory)
+            return self._store_tree(bzr_rev)
+
+        to_remove = sorted(
+            delta.removed + delta.missing, key=sort_changes, reverse=True
+        )
+        for change in to_remove:
+            if change.kind[0] == "directory":
+                # empty directories will delete themselves in `self._last_root`
+                continue
+            path = change.path[0]
+            del self._last_root[path.encode()]
+
+        # `delta.kind_changed` needs to happen before `delta.added` since a file
+        # could be added under a node that changed from directory to file at the
+        # same time, for example
+        for change in itertools.chain(delta.kind_changed, delta.added, delta.modified):
+            path = change.path[1]
+            entry = inventory.get_entry(change.file_id)
+            content = self.store_content(bzr_rev, path, entry)
+            self._last_root[path.encode()] = content
+
+        self._prev_revision = bzr_rev
+        return self._store_tree(bzr_rev)
 
     def store_release(self, name: bytes, target: Sha1Git) -> Sha1Git:
         """Store a release given its name and its target.
@@ -510,12 +569,14 @@ class BazaarLoader(BaseLoader):
         assert self.repo is not None
         return self.repo.get_graph().iter_ancestry([rev.revision_id])
 
-    @lru_cache()
-    def _get_revision_tree(self, rev: BzrRevisionId):
+    # We want to cache at most the current revision and the last, no need to
+    # take cache more than this.
+    @lru_cache(maxsize=2)
+    def _get_revision_tree(self, rev: BzrRevisionId) -> Tree:
         assert self.repo is not None
         return self.repo.revision_tree(rev)
 
-    def _store_tree(self, inventory: Inventory) -> Sha1Git:
+    def _store_tree(self, bzr_rev: BzrRevision) -> Sha1Git:
         """Save the current in-memory tree to storage."""
         directories: List[from_disk.Directory] = [self._last_root]
         while directories:
@@ -528,14 +589,17 @@ class BazaarLoader(BaseLoader):
                     if isinstance(item, from_disk.Directory)
                 ]
             )
-        self._prev_inventory = inventory
+        self._prev_revision = bzr_rev
         return self._last_root.hash
 
     def _store_directories_slow(self, bzr_rev: BzrRevision, inventory: Inventory):
-        """Store a revision directories given its hg nodeid.
+        """Store a revision's directories.
 
         This is the slow variant: it does not use a diff from the last revision
-        but lists all the files. A future patch will introduce a faster version.
+        but lists all the files. It is used for the first revision of a load
+        (the null revision for a full run, the last recorded head for an
+        incremental one) or for cases where the headaches of figuring out the
+        delta from the breezy primitives is not worth it.
         """
         # Don't reuse the last root, we're listing everything anyway, and we
         # could be keeping around deleted files
