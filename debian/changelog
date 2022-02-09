@@ -1,8 +1,24 @@
-swh-loader-bzr (0.1.0-1~swh1~bpo10+1) buster-swh; urgency=medium
+swh-loader-bzr (1.0.1-1~swh1) unstable-swh; urgency=medium
 
-  * Rebuild for buster-swh
+  * New upstream release 1.0.1     - (tagged by Antoine R. Dumont
+    (@ardumont) <antoine.romain.dumont@gmail.com> on 2022-02-09 16:14:32
+    +0100)
+  * Upstream changes:     - v1.0.1     - tests: Reference tasks module
+    for tests to be ok with debian build     - MANIFEST.in: Reference
+    the tests data folder
 
- -- Software Heritage autobuilder (on jenkins-debian1) <jenkins@jenkins-debian1.internal.softwareheritage.org>  Wed, 09 Feb 2022 10:12:55 +0000
+ -- Software Heritage autobuilder (on jenkins-debian1) <jenkins@jenkins-debian1.internal.softwareheritage.org>  Wed, 09 Feb 2022 15:20:33 +0000
+
+swh-loader-bzr (1.0.0-1~swh1) unstable-swh; urgency=medium
+
+  * New upstream release 1.0.0     - (tagged by Antoine R. Dumont
+    (@ardumont) <antoine.romain.dumont@gmail.com> on 2022-02-09 15:31:34
+    +0100)
+  * Upstream changes:     - v1.0.0     - Add incremental support for the
+    bzr loader     - Add bzr loader task     - Use `branch` instead of
+    `clone`     - requirements-test: Pin pytest to < 7.0.0
+
+ -- Software Heritage autobuilder (on jenkins-debian1) <jenkins@jenkins-debian1.internal.softwareheritage.org>  Wed, 09 Feb 2022 14:39:13 +0000
 
 swh-loader-bzr (0.1.0-1~swh1) unstable-swh; urgency=medium
 

@@ -2,8 +2,10 @@
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
+import os
 from pathlib import Path
 
+from breezy.builtins import cmd_uncommit
 import pytest
 
 import swh.loader.bzr.loader as loader_mod
@@ -45,6 +47,14 @@ from swh.storage.algos.snapshot import snapshot_get_latest
 # - Case insensitive removal (Is it actually a problem?)
 # - Truly corrupted revision?
 # - No match from storage (wrong topo sort or broken rev)
+
+
+def do_uncommit(repo_url):
+    """Remove the latest revision from the given bzr repo"""
+    uncommit_cmd = cmd_uncommit()
+    with open(os.devnull, "w") as f:
+        uncommit_cmd.outf = f
+        uncommit_cmd.run(repo_url)
 
 
 @pytest.mark.parametrize("do_clone", [False, True])
@@ -295,3 +305,106 @@ def test_bzr_directory():
     directory[b"a/decently"]
     directory[b"a"]
     directory[b"another_node"]
+
+
+def test_incremental_noop(swh_storage, datadir, tmp_path):
+    """Check that nothing happens if we try to load a repo twice in a row"""
+    archive_path = Path(datadir, "nominal.tgz")
+    repo_url = prepare_repository_from_archive(archive_path, "nominal", tmp_path)
+
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    res = loader.load()
+    assert res == {"status": "eventful"}
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    res = loader.load()
+    assert res == {"status": "uneventful"}
+
+
+def test_incremental_nominal(swh_storage, datadir, tmp_path):
+    """Check that an updated repository does update after the second run, but
+    is still a noop in the third run."""
+    archive_path = Path(datadir, "nominal.tgz")
+    repo_url = prepare_repository_from_archive(archive_path, "nominal", tmp_path)
+
+    # remove 2 latest commits
+    do_uncommit(repo_url)
+    do_uncommit(repo_url)
+
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    res = loader.load()
+    assert res == {"status": "eventful"}
+    stats = get_stats(swh_storage)
+    assert stats == {
+        "content": 6,
+        "directory": 4,
+        "origin": 1,
+        "origin_visit": 1,
+        "release": 2,
+        "revision": 4,
+        "skipped_content": 0,
+        "snapshot": 1,
+    }
+
+    # Load the complete repo now
+    repo_url = prepare_repository_from_archive(archive_path, "nominal", tmp_path)
+
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    res = loader.load()
+    assert res == {"status": "eventful"}
+
+    stats = get_stats(swh_storage)
+    expected_stats = {
+        "content": 7,
+        "directory": 7,
+        "origin": 1,
+        "origin_visit": 2,
+        "release": 3,
+        "revision": 6,
+        "skipped_content": 0,
+        "snapshot": 2,
+    }
+
+    assert stats == expected_stats
+
+    # Nothing should change
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    res = loader.load()
+    assert res == {"status": "uneventful"}
+
+    stats = get_stats(swh_storage)
+    assert stats == {**expected_stats, "origin_visit": 2 + 1}
+
+
+def test_incremental_uncommitted_head(swh_storage, datadir, tmp_path):
+    """Check that doing an incremental run with the saved head missing does not
+    error out but instead loads everything correctly"""
+    archive_path = Path(datadir, "nominal.tgz")
+    repo_url = prepare_repository_from_archive(archive_path, "nominal", tmp_path)
+
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    res = loader.load()
+    assert res == {"status": "eventful"}
+    stats = get_stats(swh_storage)
+    expected_stats = {
+        "content": 7,
+        "directory": 7,
+        "origin": 1,
+        "origin_visit": 1,
+        "release": 3,
+        "revision": 6,
+        "skipped_content": 0,
+        "snapshot": 1,
+    }
+
+    assert stats == expected_stats
+
+    # Remove the previously saved head
+    do_uncommit(repo_url)
+
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    res = loader.load()
+    assert res == {"status": "eventful"}
+
+    # Everything is loaded correctly
+    stats = get_stats(swh_storage)
+    assert stats == {**expected_stats, "origin_visit": 1 + 1, "snapshot": 1 + 1}
