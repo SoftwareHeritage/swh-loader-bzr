@@ -8,7 +8,6 @@ from pathlib import Path
 from breezy.builtins import cmd_uncommit
 import pytest
 
-import swh.loader.bzr.loader as loader_mod
 from swh.loader.bzr.loader import BazaarLoader, BzrDirectory
 from swh.loader.tests import (
     assert_last_visit_matches,
@@ -136,13 +135,11 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
 
 
 def test_needs_upgrade(swh_storage, datadir, tmp_path, mocker):
+    """Old bzr repository format should fail the ingestion (upgrade necessary)"""
     archive_path = Path(datadir, "needs-upgrade.tgz")
     repo_url = prepare_repository_from_archive(archive_path, "needs-upgrade", tmp_path)
 
-    init_spy = mocker.spy(loader_mod.RepositoryNeedsUpgrade, "__init__")
-    init_spy.assert_not_called()
     res = BazaarLoader(swh_storage, repo_url, directory=repo_url).load()
-    init_spy.assert_called()
     assert res == {"status": "failed"}
 
 
