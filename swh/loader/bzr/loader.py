@@ -11,7 +11,7 @@ from functools import lru_cache, partial
 import itertools
 import os
 from tempfile import mkdtemp
-from typing import Dict, Iterator, List, NewType, Optional, Set, TypeVar, Union
+from typing import Dict, Iterator, List, NewType, Optional, Set, Tuple, TypeVar, Union
 
 from breezy import errors as bzr_errors
 from breezy import repository, tsort
@@ -320,8 +320,11 @@ class BazaarLoader(BaseLoader):
         self.tags  # set the property
         return False
 
-    def store_data(self):
+    def store_data(self) -> None:
         """Store fetched data in the database."""
+        assert self.repo is not None
+        assert self.tags is not None
+
         # Insert revisions using a topological sorting
         revs = self._get_bzr_revs_to_load()
 
@@ -340,7 +343,7 @@ class BazaarLoader(BaseLoader):
             # still we'll make a snapshot, so we continue
             self._load_status = "uneventful"
 
-        snapshot_branches: Dict[bytes, SnapshotBranch] = {}
+        snapshot_branches: Dict[bytes, Optional[SnapshotBranch]] = {}
 
         for tag_name, target in self.tags.items():
             label = b"tags/%s" % tag_name
@@ -362,9 +365,9 @@ class BazaarLoader(BaseLoader):
                 # which are not in this branch. We cannot point a tag there.
                 snapshot_branches[label] = None
                 continue
-            target = self._get_revision_id_from_bzr_id(target)
+            snp_target = self._get_revision_id_from_bzr_id(target)
             snapshot_branches[label] = SnapshotBranch(
-                target=self.store_release(tag_name, target),
+                target=self.store_release(tag_name, snp_target),
                 target_type=TargetType.RELEASE,
             )
 
@@ -385,7 +388,7 @@ class BazaarLoader(BaseLoader):
         self.flush()
         self.loaded_snapshot_id = snapshot.id
 
-    def store_revision(self, bzr_rev: BzrRevision):
+    def store_revision(self, bzr_rev: BzrRevision) -> None:
         self.log.debug("Storing revision '%s'", bzr_rev.revision_id)
         directory = self.store_directories(bzr_rev)
         associated_bugs = [
@@ -592,7 +595,9 @@ class BazaarLoader(BaseLoader):
         self._prev_revision = bzr_rev
         return self._last_root.hash
 
-    def _store_directories_slow(self, bzr_rev: BzrRevision, inventory: Inventory):
+    def _store_directories_slow(
+        self, bzr_rev: BzrRevision, inventory: Inventory
+    ) -> None:
         """Store a revision's directories.
 
         This is the slow variant: it does not use a diff from the last revision
@@ -611,7 +616,7 @@ class BazaarLoader(BaseLoader):
             content = self.store_content(bzr_rev, path, entry)
             self._last_root[path.encode()] = content
 
-    def _get_revision_parents(self, bzr_rev: BzrRevision):
+    def _get_revision_parents(self, bzr_rev: BzrRevision) -> Tuple[Sha1Git, ...]:
         parents = []
         for parent_id in bzr_rev.parent_ids:
             if parent_id == NULL_REVISION:
@@ -660,14 +665,15 @@ class BazaarLoader(BaseLoader):
         return branches[0]
 
     @property
-    def head_revision_id(self) -> bytes:
+    def head_revision_id(self) -> BzrRevisionId:
         """Returns the Bazaar revision id of the branch's head.
 
         Bazaar/Breezy branches do not have multiple heads."""
         assert self.repo is not None
         if self._head_revision_id is None:
             self._head_revision_id = self.branch.last_revision()
-        return self._head_revision_id
+        assert self._head_revision_id is not None
+        return BzrRevisionId(self._head_revision_id)
 
     @property
     def tags(self) -> Optional[Dict[bytes, BzrRevisionId]]:
