@@ -1,3 +1,9 @@
+swh-loader-bzr (1.1.0-1~swh3) unstable-swh; urgency=medium
+
+  * Bump new release
+
+ -- Antoine R. Dumont (@ardumont) <ardumont@softwareheritage.org>  Fri, 11 Feb 2022 17:45:15 +0100
+
 swh-loader-bzr (1.1.0-1~swh2) unstable-swh; urgency=medium
 
   * Bump new release
