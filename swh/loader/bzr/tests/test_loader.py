@@ -135,12 +135,12 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
 
 
 def test_needs_upgrade(swh_storage, datadir, tmp_path, mocker):
-    """Old bzr repository format should fail the ingestion (upgrade necessary)"""
+    """Old bzr repository format should be upgraded to latest format"""
     archive_path = Path(datadir, "needs-upgrade.tgz")
     repo_url = prepare_repository_from_archive(archive_path, "needs-upgrade", tmp_path)
 
     res = BazaarLoader(swh_storage, repo_url, directory=repo_url).load()
-    assert res == {"status": "failed"}
+    assert res == {"status": "uneventful"}  # needs-upgrade is an empty repo
 
 
 def test_no_branch(swh_storage, datadir, tmp_path):

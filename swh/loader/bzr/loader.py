@@ -15,7 +15,7 @@ from typing import Dict, Iterator, List, NewType, Optional, Set, Tuple, TypeVar,
 
 from breezy import errors as bzr_errors
 from breezy import repository, tsort
-from breezy.builtins import cmd_branch
+from breezy.builtins import cmd_branch, cmd_upgrade
 from breezy.bzr import bzrdir
 from breezy.bzr.branch import Branch as BzrBranch
 from breezy.bzr.inventory import Inventory, InventoryEntry
@@ -76,11 +76,6 @@ older_repository_formats = {
 
 # Latest one as of this time, unlikely to change
 expected_repository_format = b"Bazaar repository format 2a (needs bzr 1.16 or later)\n"
-
-
-class RepositoryNeedsUpgrade(Exception):
-    """The repository we're trying to load is using an old format.
-    We only support format 2a (the most recent), see `brz help upgrade`"""
 
 
 class UnknownRepositoryFormat(Exception):
@@ -269,6 +264,12 @@ class BazaarLoader(BaseLoader):
         if self.repo is not None:
             self.repo.unlock()
 
+    def get_repo(self):
+        _, _, repo, _ = bzrdir.BzrDir.open_containing_tree_branch_or_repository(
+            self._repo_directory
+        )
+        return repo
+
     def fetch_data(self) -> bool:
         """Fetch the data from the source the loader is currently loading
 
@@ -303,14 +304,16 @@ class BazaarLoader(BaseLoader):
             self.log.debug("Using local directory '%s'", self.directory)
             self._repo_directory = self.directory
 
-        res = bzrdir.BzrDir.open_containing_tree_branch_or_repository(
-            self._repo_directory
-        )
-        (_tree, _branch, repo, _relpath) = res
+        repo = self.get_repo()
         repository_format = repo._format.as_string()  # lies about being a string
         if not repository_format == expected_repository_format:
             if repository_format in older_repository_formats:
-                raise RepositoryNeedsUpgrade()
+                self.log.debug(
+                    "Upgrading repository from format '%s'",
+                    repository_format.decode("ascii").strip("\n"),
+                )
+                cmd_upgrade().run(self._repo_directory, clean=True)
+                repo = self.get_repo()
             else:
                 raise UnknownRepositoryFormat()
 
