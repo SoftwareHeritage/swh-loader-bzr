@@ -264,11 +264,16 @@ class BazaarLoader(BaseLoader):
         if self.repo is not None:
             self.repo.unlock()
 
-    def get_repo(self):
-        _, _, repo, _ = bzrdir.BzrDir.open_containing_tree_branch_or_repository(
+    def get_repo_and_branch(self) -> Tuple[repository.Repository, BzrBranch]:
+        _, branch, repo, _ = bzrdir.BzrDir.open_containing_tree_branch_or_repository(
             self._repo_directory
         )
-        return repo
+        return repo, branch
+
+    def run_upgrade(self):
+        """Upgrade both repository and branch to the most recent supported version
+        to be compatible with the loader."""
+        cmd_upgrade().run(self._repo_directory, clean=True)
 
     def fetch_data(self) -> bool:
         """Fetch the data from the source the loader is currently loading
@@ -304,18 +309,30 @@ class BazaarLoader(BaseLoader):
             self.log.debug("Using local directory '%s'", self.directory)
             self._repo_directory = self.directory
 
-        repo = self.get_repo()
+        repo, branch = self.get_repo_and_branch()
         repository_format = repo._format.as_string()  # lies about being a string
+
         if not repository_format == expected_repository_format:
             if repository_format in older_repository_formats:
                 self.log.debug(
                     "Upgrading repository from format '%s'",
                     repository_format.decode("ascii").strip("\n"),
                 )
-                cmd_upgrade().run(self._repo_directory, clean=True)
-                repo = self.get_repo()
+                self.run_upgrade()
+                repo, branch = self.get_repo_and_branch()
             else:
                 raise UnknownRepositoryFormat()
+
+        if not branch.supports_tags():
+            # Some repos have the right format marker but their branches do not
+            # support tags
+            self.log.debug("Branch does not support tags, upgrading")
+            self.run_upgrade()
+            repo, branch = self.get_repo_and_branch()
+            # We could set the branch here directly, but we want to run the
+            # sanity checks in the `self.branch` property, so let's make sure
+            # we invalidate the "cache".
+            self._branch = None
 
         self.repo = repo
         self.repo.lock_read()
@@ -681,7 +698,7 @@ class BazaarLoader(BaseLoader):
     @property
     def tags(self) -> Optional[Dict[bytes, BzrRevisionId]]:
         assert self.repo is not None
-        if self._tags is None and self.branch.supports_tags():
+        if self._tags is None:
             self._tags = {
                 n.encode(): r for n, r in self.branch.tags.get_tag_dict().items()
             }
