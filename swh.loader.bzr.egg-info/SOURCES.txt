@@ -44,6 +44,8 @@ swh/loader/bzr/tests/test_loader.py
 swh/loader/bzr/tests/test_tasks.py
 swh/loader/bzr/tests/data/broken-tags.sh
 swh/loader/bzr/tests/data/broken-tags.tgz
+swh/loader/bzr/tests/data/does-not-support-tags.sh
+swh/loader/bzr/tests/data/does-not-support-tags.tgz
 swh/loader/bzr/tests/data/empty.sh
 swh/loader/bzr/tests/data/empty.tgz
 swh/loader/bzr/tests/data/ghosts.py

@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: swh.loader.bzr
-Version: 1.1.0
+Version: 1.2.0
 Summary: Software Heritage Bazaar/Breezy intent
 Home-page: https://forge.softwareheritage.org/diffusion/DLDBZR/
 Author: Software Heritage developers
@@ -25,6 +25,8 @@ License-File: AUTHORS
 Software Heritage - Bazaar/Breezy loader
 ========================================
 
-Loader for `Bazaar <http://bazaar.canonical.com/en/>`_ and `Breezy <https://www.breezy-vcs.org/>`_ repositories. Breezy is a friendly fork of Bazaar that supports the Bazaar file format and network protocol.
+Loader for `Bazaar <http://bazaar.canonical.com/en/>`_ and `Breezy
+<https://www.breezy-vcs.org/>`_ repositories. Breezy is a friendly fork of Bazaar that
+supports the Bazaar file format and network protocol.
 
 
