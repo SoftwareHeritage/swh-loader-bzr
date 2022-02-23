@@ -1,3 +1,14 @@
+swh-loader-bzr (1.2.0-1~swh1) unstable-swh; urgency=medium
+
+  * New upstream release 1.2.0     - (tagged by Antoine R. Dumont
+    (@ardumont) <antoine.romain.dumont@gmail.com> on 2022-02-23 09:55:46
+    +0100)
+  * Upstream changes:     - v1.2.0     - Support new repositories with
+    old branches     - loader: Upgrade repository with old formats prior
+    to loading
+
+ -- Software Heritage autobuilder (on jenkins-debian1) <jenkins@jenkins-debian1.internal.softwareheritage.org>  Wed, 23 Feb 2022 09:01:43 +0000
+
 swh-loader-bzr (1.1.0-1~swh3) unstable-swh; urgency=medium
 
   * Bump new release
