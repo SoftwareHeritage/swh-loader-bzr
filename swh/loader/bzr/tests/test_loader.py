@@ -39,6 +39,8 @@ from swh.storage.algos.snapshot import snapshot_get_latest
 #   - Ghost revisions
 # - broken-tags
 #   - Tags corruption
+# - does-not-support-tags
+#   - Repo is recent but branch does not support tags, needs upgraded
 
 # TODO tests:
 # - Root path listed in changes (does that even happen?)
@@ -135,12 +137,29 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
 
 
 def test_needs_upgrade(swh_storage, datadir, tmp_path, mocker):
-    """Old bzr repository format should fail the ingestion (upgrade necessary)"""
+    """Old bzr repository format should be upgraded to latest format"""
     archive_path = Path(datadir, "needs-upgrade.tgz")
     repo_url = prepare_repository_from_archive(archive_path, "needs-upgrade", tmp_path)
 
-    res = BazaarLoader(swh_storage, repo_url, directory=repo_url).load()
-    assert res == {"status": "failed"}
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    upgrade_spy = mocker.spy(loader, "run_upgrade")
+    res = loader.load()
+    upgrade_spy.assert_called()
+    assert res == {"status": "uneventful"}  # needs-upgrade is an empty repo
+
+
+def test_does_not_support_tags(swh_storage, datadir, tmp_path, mocker):
+    """Repository format is correct, but the branch itself does not support tags
+    and should be upgraded to the latest format"""
+    archive_path = Path(datadir, "does-not-support-tags.tgz")
+    path = "does-not-support-tags-repo/does-not-support-tags-branch"
+    repo_url = prepare_repository_from_archive(archive_path, path, tmp_path,)
+
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    upgrade_spy = mocker.spy(loader, "run_upgrade")
+    res = loader.load()
+    upgrade_spy.assert_called()
+    assert res == {"status": "uneventful"}  # does-not-support-tags is an empty repo
 
 
 def test_no_branch(swh_storage, datadir, tmp_path):
