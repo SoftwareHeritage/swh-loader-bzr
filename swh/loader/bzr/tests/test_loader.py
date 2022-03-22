@@ -112,14 +112,10 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
         },
         "date": {
             "timestamp": {"seconds": 1643302390, "microseconds": 0},
-            "offset": 60,
-            "negative_utc": False,
             "offset_bytes": b"+0100",
         },
         "committer_date": {
             "timestamp": {"seconds": 1643302390, "microseconds": 0},
-            "offset": 60,
-            "negative_utc": False,
             "offset_bytes": b"+0100",
         },
         "type": "bzr",
