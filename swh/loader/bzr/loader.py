@@ -399,7 +399,8 @@ class BazaarLoader(BaseLoader):
                 target=head_revision_git_hash, target_type=TargetType.REVISION
             )
             snapshot_branches[b"HEAD"] = SnapshotBranch(
-                target=b"trunk", target_type=TargetType.ALIAS,
+                target=b"trunk",
+                target_type=TargetType.ALIAS,
             )
 
         snapshot = Snapshot(branches=snapshot_branches)
@@ -416,7 +417,10 @@ class BazaarLoader(BaseLoader):
             for url, status in bzr_rev.iter_bugs()
         ]
         extra_headers = [
-            (b"time_offset_seconds", str(bzr_rev.timezone).encode(),),
+            (
+                b"time_offset_seconds",
+                str(bzr_rev.timezone).encode(),
+            ),
             *associated_bugs,
         ]
         timestamp = Timestamp(int(bzr_rev.timestamp), 0)
