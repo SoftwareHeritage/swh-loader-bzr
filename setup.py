@@ -72,6 +72,6 @@ setup(
         "Bug Reports": "https://forge.softwareheritage.org/maniphest",
         "Funding": "https://www.softwareheritage.org/donate",
         "Source": ("https://forge.softwareheritage.org/source/swh-loader-bzr"),
-        "Documentation": "https://docs.softwareheritage.org/devel/swh-loader-bzr/",  # NoQA: E501
+        "Documentation": "https://docs.softwareheritage.org/devel/swh-loader-bzr/",  # NoQA: B950
     },
 )

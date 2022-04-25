@@ -2,10 +2,10 @@ breezy
 swh.model>=2.6.1
 swh.storage>=0.41.1
 swh.scheduler>=0.23.0
-swh.loader.core>=2.3.0
+swh.loader.core>=3.0.0
 
 [testing]
-pytest<7.0.0
+pytest
 pytest-mock
 swh.core[http]>=0.0.61
 swh.scheduler[testing]>=0.5.0
