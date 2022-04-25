@@ -11,7 +11,18 @@ from functools import lru_cache, partial
 import itertools
 import os
 from tempfile import mkdtemp
-from typing import Dict, Iterator, List, NewType, Optional, Set, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    NewType,
+    Optional,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 from breezy import errors as bzr_errors
 from breezy import repository, tsort
@@ -31,7 +42,6 @@ from swh.model.model import (
     Content,
     ExtID,
     ObjectType,
-    Origin,
     Person,
     Release,
     Revision,
@@ -151,17 +161,12 @@ class BazaarLoader(BaseLoader):
         storage: StorageInterface,
         url: str,
         directory: Optional[str] = None,
-        logging_class: str = "swh.loader.bzr.Loader",
         visit_date: Optional[datetime] = None,
         temp_directory: str = "/tmp",
         clone_timeout_seconds: int = 7200,
-        max_content_size: Optional[int] = None,
+        **kwargs: Any,
     ):
-        super().__init__(
-            storage=storage,
-            logging_class=logging_class,
-            max_content_size=max_content_size,
-        )
+        super().__init__(storage=storage, origin_url=url, **kwargs)
 
         self._temp_directory = temp_directory
         self._clone_timeout = clone_timeout_seconds
@@ -181,8 +186,7 @@ class BazaarLoader(BaseLoader):
         self._latest_head: Optional[BzrRevisionId] = None
         self._load_status = "eventful"
 
-        self.origin_url = url
-        self.visit_date = visit_date
+        self.visit_date = visit_date or self.visit_date
         self.directory = directory
         self.repo: Optional[repository.Repository] = None
 
@@ -197,19 +201,11 @@ class BazaarLoader(BaseLoader):
             log=self.log,
         )
 
-    def prepare_origin_visit(self) -> None:
-        """First step executed by the loader to prepare origin and visit
-        references. Set/update self.origin, and
-        optionally self.origin_url, self.visit_date.
-
-        """
-        self.origin = Origin(url=self.origin_url)
-
     def prepare(self) -> None:
         """Second step executed by the loader to prepare some state needed by
         the loader.
         """
-        latest_snapshot = snapshot_get_latest(self.storage, self.origin_url)
+        latest_snapshot = snapshot_get_latest(self.storage, self.origin.url)
         if latest_snapshot:
             self._set_recorded_state(latest_snapshot)
 
@@ -291,17 +287,17 @@ class BazaarLoader(BaseLoader):
             )
             msg = "Cloning '%s' to '%s' with timeout %s seconds"
             self.log.debug(
-                msg, self.origin_url, self._repo_directory, self._clone_timeout
+                msg, self.origin.url, self._repo_directory, self._clone_timeout
             )
             closure = partial(
                 cmd_branch().run,
-                self.origin_url,
+                self.origin.url,
                 self._repo_directory,
                 no_tree=True,
                 use_existing_dir=True,
             )
             clone_with_timeout(
-                self.origin_url, self._repo_directory, closure, self._clone_timeout
+                self.origin.url, self._repo_directory, closure, self._clone_timeout
             )
         else:  # existing local repository
             # Allow to load on disk repository without cloning
@@ -399,7 +395,8 @@ class BazaarLoader(BaseLoader):
                 target=head_revision_git_hash, target_type=TargetType.REVISION
             )
             snapshot_branches[b"HEAD"] = SnapshotBranch(
-                target=b"trunk", target_type=TargetType.ALIAS,
+                target=b"trunk",
+                target_type=TargetType.ALIAS,
             )
 
         snapshot = Snapshot(branches=snapshot_branches)
@@ -416,7 +413,10 @@ class BazaarLoader(BaseLoader):
             for url, status in bzr_rev.iter_bugs()
         ]
         extra_headers = [
-            (b"time_offset_seconds", str(bzr_rev.timezone).encode(),),
+            (
+                b"time_offset_seconds",
+                str(bzr_rev.timezone).encode(),
+            ),
             *associated_bugs,
         ]
         timestamp = Timestamp(int(bzr_rev.timestamp), 0)
