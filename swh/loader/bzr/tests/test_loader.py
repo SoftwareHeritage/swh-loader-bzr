@@ -112,14 +112,10 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
         },
         "date": {
             "timestamp": {"seconds": 1643302390, "microseconds": 0},
-            "offset": 60,
-            "negative_utc": False,
             "offset_bytes": b"+0100",
         },
         "committer_date": {
             "timestamp": {"seconds": 1643302390, "microseconds": 0},
-            "offset": 60,
-            "negative_utc": False,
             "offset_bytes": b"+0100",
         },
         "type": "bzr",
@@ -153,7 +149,11 @@ def test_does_not_support_tags(swh_storage, datadir, tmp_path, mocker):
     and should be upgraded to the latest format"""
     archive_path = Path(datadir, "does-not-support-tags.tgz")
     path = "does-not-support-tags-repo/does-not-support-tags-branch"
-    repo_url = prepare_repository_from_archive(archive_path, path, tmp_path,)
+    repo_url = prepare_repository_from_archive(
+        archive_path,
+        path,
+        tmp_path,
+    )
 
     loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
     upgrade_spy = mocker.spy(loader, "run_upgrade")
