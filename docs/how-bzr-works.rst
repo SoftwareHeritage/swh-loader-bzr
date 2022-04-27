@@ -35,9 +35,5 @@ de-duplicate on the SWH side:
 
 Not resolved yet:
 
-    - We have to look for stacked branches, how they work and if we can do anything more
-      interesting than just failing.
-    - Bazaar is able to store empty directories, does SWH handle them?
-    - What do we do about multiple authors (they are line separated) in each commit?
-    - What do we do about bug fixes metadata in each commit?
-    - What do we do about branch config?
+    - Bazaar is able to store empty directories, does SWH handle them? (T4201)
+    - What do we do about multiple authors (they are line separated) in each commit? (T3887)
