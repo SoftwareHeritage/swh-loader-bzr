@@ -3,8 +3,6 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
-from typing import Optional
-
 from celery import shared_task
 
 from swh.loader.core.utils import parse_visit_date
@@ -12,15 +10,17 @@ from swh.loader.core.utils import parse_visit_date
 from .loader import BazaarLoader
 
 
+def _process_kwargs(kwargs):
+    if "visit_date" in kwargs:
+        kwargs["visit_date"] = parse_visit_date(kwargs["visit_date"])
+    return kwargs
+
+
 @shared_task(name=__name__ + ".LoadBazaar")
-def load_bzr(
-    *, url: str, directory: Optional[str] = None, visit_date: Optional[str] = None
-):
+def load_bzr(**kwargs):
     """Bazaar repository loading
 
     Args: see :func:`BazaarLoader` constructor.
     """
-    loader = BazaarLoader.from_configfile(
-        url=url, directory=directory, visit_date=parse_visit_date(visit_date)
-    )
+    loader = BazaarLoader.from_configfile(**_process_kwargs(kwargs))
     return loader.load()
