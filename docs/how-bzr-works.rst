@@ -7,11 +7,13 @@ In Bazaar, a repository is simply the store of revisions. It's a storing backend
 does not have to carry any semantic purpose for the project(s) it's holding. What users
 are really dealing with are branches.
 
-A branch is an ordered set of revisions that describes the history of a set of files. It
-corresponds to a folder on the file system, and can only have a single head: if two
-clones of a branch diverge, the only way of uniting them is by merging one into the
-other. A branch needs to have a repository to store its revisions, but multiple branches
-can share the same repository.
+A branch is an ordered set of revisions that describes the history of a set of files.
+Like in Git, it's a pointer to a single revision. It corresponds to a folder on the
+file system, and can only have a single head: if two clones of a branch diverge,
+the only way of uniting them is by merging one into the other. A branch needs to
+have a repository to store its revisions, but multiple branches can share the same repository.
+
+Note: there isn't a "Breezy" format, just the different Bazaar formats which are supported by Breezy, along with e.g. the Git format.
 
 Bazaar does not have a very strong opinion on how it should be used and supports
 multiple different workflows, even a centralized one with bound branches. We need to
