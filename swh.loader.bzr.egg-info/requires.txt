@@ -1,4 +1,4 @@
-breezy
+breezy<3.3.0
 swh.model>=2.6.1
 swh.storage>=0.41.1
 swh.scheduler>=0.23.0

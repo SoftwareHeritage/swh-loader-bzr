@@ -1,16 +1,14 @@
 Metadata-Version: 2.1
 Name: swh.loader.bzr
-Version: 1.3.1
+Version: 1.3.2
 Summary: Software Heritage Bazaar/Breezy intent
 Home-page: https://forge.softwareheritage.org/diffusion/DLDBZR/
 Author: Software Heritage developers
 Author-email: swh-devel@inria.fr
-License: UNKNOWN
 Project-URL: Bug Reports, https://forge.softwareheritage.org/maniphest
 Project-URL: Funding, https://www.softwareheritage.org/donate
 Project-URL: Source, https://forge.softwareheritage.org/source/swh-loader-bzr
 Project-URL: Documentation, https://docs.softwareheritage.org/devel/swh-loader-bzr/
-Platform: UNKNOWN
 Classifier: Programming Language :: Python :: 3
 Classifier: Intended Audience :: Developers
 Classifier: License :: OSI Approved :: GNU General Public License v3 (GPLv3)
@@ -28,5 +26,3 @@ Software Heritage - Bazaar/Breezy loader
 Loader for `Bazaar <http://bazaar.canonical.com/en/>`_ and `Breezy
 <https://www.breezy-vcs.org/>`_ repositories. Breezy is a friendly fork of Bazaar that
 supports the Bazaar file format and network protocol.
-
-
