@@ -2,4 +2,4 @@
 # should match https://pypi.python.org/pypi names. For the full spec or
 # dependency lines, see https://pip.readthedocs.org/en/1.1/requirements.html
 
-breezy
+breezy < 3.3.0  # version 3.3.0 introduces Rust code, which requires rustc versions newer than available in Debian 11
