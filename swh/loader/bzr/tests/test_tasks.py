@@ -8,12 +8,8 @@ import uuid
 import pytest
 
 from swh.scheduler.model import ListedOrigin, Lister
-from swh.scheduler.utils import create_origin_task_dict
 
-
-@pytest.fixture(autouse=True)
-def celery_worker_and_swh_config(swh_scheduler_celery_worker, swh_config):
-    pass
+NAMESPACE = "swh.loader.bzr"
 
 
 @pytest.fixture
@@ -28,49 +24,21 @@ def bzr_listed_origin(bzr_lister):
     )
 
 
-def test_loader(
-    mocker,
-    swh_scheduler_celery_app,
-):
-    mock_loader = mocker.patch("swh.loader.bzr.loader.BazaarLoader.load")
-    mock_loader.return_value = {"status": "eventful"}
-
-    res = swh_scheduler_celery_app.send_task(
-        "swh.loader.bzr.tasks.LoadBazaar",
-        kwargs={
-            "url": "origin_url",
-            "directory": "/some/repo",
-            "visit_date": "now",
-        },
-    )
-
-    assert res
-    res.wait()
-    assert res.successful()
-
-    assert res.result == {"status": "eventful"}
-    mock_loader.assert_called_once_with()
-
-
+@pytest.mark.parametrize(
+    "extra_loader_arguments",
+    [{"directory": "/some/repo"}, {"directory": "/some/repo", "visit_date": "now"}],
+)
 def test_loader_for_listed_origin(
-    mocker,
-    swh_scheduler_celery_app,
+    loading_task_creation_for_listed_origin_test,
     bzr_lister,
     bzr_listed_origin,
+    extra_loader_arguments,
 ):
-    mock_loader = mocker.patch("swh.loader.bzr.loader.BazaarLoader.load")
-    mock_loader.return_value = {"status": "eventful"}
+    bzr_listed_origin.extra_loader_arguments = extra_loader_arguments
 
-    task_dict = create_origin_task_dict(bzr_listed_origin, bzr_lister)
-
-    res = swh_scheduler_celery_app.send_task(
-        "swh.loader.bzr.tasks.LoadBazaar",
-        kwargs=task_dict["arguments"]["kwargs"],
+    loading_task_creation_for_listed_origin_test(
+        loader_class_name=f"{NAMESPACE}.loader.BazaarLoader",
+        task_function_name=f"{NAMESPACE}.tasks.LoadBazaar",
+        lister=bzr_lister,
+        listed_origin=bzr_listed_origin,
     )
-
-    assert res
-    res.wait()
-    assert res.successful()
-
-    assert res.result == {"status": "eventful"}
-    mock_loader.assert_called_once_with()
