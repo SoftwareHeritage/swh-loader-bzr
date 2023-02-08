@@ -11,18 +11,7 @@ from functools import lru_cache, partial
 import itertools
 import os
 from tempfile import mkdtemp
-from typing import (
-    Any,
-    Dict,
-    Iterator,
-    List,
-    NewType,
-    Optional,
-    Set,
-    Tuple,
-    TypeVar,
-    Union,
-)
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, TypeVar, Union
 
 from breezy import errors as bzr_errors
 from breezy import repository, tsort
@@ -31,6 +20,7 @@ from breezy.builtins import cmd_branch, cmd_upgrade
 from breezy.controldir import ControlDir
 from breezy.revision import NULL_REVISION
 from breezy.revision import Revision as BzrRevision
+from breezy.revision import RevisionID as BzrRevisionId
 from breezy.tree import Tree, TreeChange
 
 from swh.loader.core.loader import BaseLoader
@@ -57,8 +47,6 @@ from swh.storage.interface import StorageInterface
 TEMPORARY_DIR_PREFIX_PATTERN = "swh.loader.bzr.from_disk"
 EXTID_TYPE = "bzr-nodeid"
 EXTID_VERSION: int = 1
-
-BzrRevisionId = NewType("BzrRevisionId", bytes)
 
 T = TypeVar("T")
 
@@ -304,7 +292,7 @@ class BazaarLoader(BaseLoader):
             self._repo_directory = self.directory
 
         repo, branch = self.get_repo_and_branch()
-        repository_format = repo._format.as_string()  # lies about being a string
+        repository_format = repo._format.get_format_string()
 
         if not repository_format == expected_repository_format:
             if repository_format in older_repository_formats:
@@ -425,7 +413,11 @@ class BazaarLoader(BaseLoader):
         revision = Revision(
             author=Person.from_fullname(bzr_rev.get_apparent_authors()[0].encode()),
             date=date,
-            committer=Person.from_fullname(bzr_rev.committer.encode()),
+            committer=(
+                Person.from_fullname(bzr_rev.committer.encode())
+                if bzr_rev.committer
+                else None
+            ),
             committer_date=date,
             type=RevisionType.BAZAAR,
             directory=directory,
@@ -548,7 +540,7 @@ class BazaarLoader(BaseLoader):
 
         return from_disk.Content({"sha1_git": content.sha1_git, "perms": perms})
 
-    def _get_bzr_revs_to_load(self) -> List[BzrRevision]:
+    def _get_bzr_revs_to_load(self) -> List[BzrRevisionId]:
         assert self.repo is not None
         self.log.debug("Getting fully sorted revision tree")
         if self.head_revision_id == NULL_REVISION:
@@ -590,7 +582,9 @@ class BazaarLoader(BaseLoader):
             return new_revisions
         return all_revisions
 
-    def _iterate_ancestors(self, revision_id: BzrRevisionId) -> Iterator[BzrRevisionId]:
+    def _iterate_ancestors(
+        self, revision_id: BzrRevisionId
+    ) -> Iterator[Tuple[BzrRevisionId, Tuple[BzrRevisionId]]]:
         """Return an iterator of this revision's ancestors"""
         assert self.repo is not None
         return self.repo.get_graph().iter_ancestry([revision_id])
