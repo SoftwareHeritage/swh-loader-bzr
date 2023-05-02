@@ -11,29 +11,17 @@ from functools import lru_cache, partial
 import itertools
 import os
 from tempfile import mkdtemp
-from typing import (
-    Any,
-    Dict,
-    Iterator,
-    List,
-    NewType,
-    Optional,
-    Set,
-    Tuple,
-    TypeVar,
-    Union,
-)
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, TypeVar, Union
 
 from breezy import errors as bzr_errors
 from breezy import repository, tsort
+from breezy.branch import Branch as BzrBranch
 from breezy.builtins import cmd_branch, cmd_upgrade
-from breezy.bzr import bzrdir
-from breezy.bzr.branch import Branch as BzrBranch
-from breezy.bzr.inventory import Inventory, InventoryEntry
-from breezy.bzr.inventorytree import InventoryTreeChange
+from breezy.controldir import ControlDir
 from breezy.revision import NULL_REVISION
 from breezy.revision import Revision as BzrRevision
-from breezy.tree import Tree
+from breezy.revision import RevisionID as BzrRevisionId
+from breezy.tree import Tree, TreeChange
 
 from swh.loader.core.loader import BaseLoader
 from swh.loader.core.utils import clean_dangling_folders, clone_with_timeout
@@ -59,8 +47,6 @@ from swh.storage.interface import StorageInterface
 TEMPORARY_DIR_PREFIX_PATTERN = "swh.loader.bzr.from_disk"
 EXTID_TYPE = "bzr-nodeid"
 EXTID_VERSION: int = 1
-
-BzrRevisionId = NewType("BzrRevisionId", bytes)
 
 T = TypeVar("T")
 
@@ -136,7 +122,7 @@ class BzrDirectory(from_disk.Directory):
             return default
 
 
-def sort_changes(change: InventoryTreeChange) -> str:
+def sort_changes(change: TreeChange) -> str:
     """Key function for sorting the changes by path.
 
     Sorting allows us to group the folders together (for example "b", then "a/a",
@@ -261,7 +247,7 @@ class BazaarLoader(BaseLoader):
             self.repo.unlock()
 
     def get_repo_and_branch(self) -> Tuple[repository.Repository, BzrBranch]:
-        _, branch, repo, _ = bzrdir.BzrDir.open_containing_tree_branch_or_repository(
+        _, branch, repo, _ = ControlDir.open_containing_tree_branch_or_repository(
             self._repo_directory
         )
         return repo, branch
@@ -306,7 +292,7 @@ class BazaarLoader(BaseLoader):
             self._repo_directory = self.directory
 
         repo, branch = self.get_repo_and_branch()
-        repository_format = repo._format.as_string()  # lies about being a string
+        repository_format = repo._format.get_format_string()
 
         if not repository_format == expected_repository_format:
             if repository_format in older_repository_formats:
@@ -427,7 +413,11 @@ class BazaarLoader(BaseLoader):
         revision = Revision(
             author=Person.from_fullname(bzr_rev.get_apparent_authors()[0].encode()),
             date=date,
-            committer=Person.from_fullname(bzr_rev.committer.encode()),
+            committer=(
+                Person.from_fullname(bzr_rev.committer.encode())
+                if bzr_rev.committer
+                else None
+            ),
             committer_date=date,
             type=RevisionType.BAZAAR,
             directory=directory,
@@ -453,21 +443,19 @@ class BazaarLoader(BaseLoader):
 
     def store_directories(self, bzr_rev: BzrRevision) -> Sha1Git:
         """Store a revision's directories."""
-        repo: repository.Repository = self.repo
-        inventory: Inventory = repo.get_inventory(bzr_rev.revision_id)
+        new_tree = self._get_revision_tree(bzr_rev.revision_id)
         if self._prev_revision is None:
-            self._store_directories_slow(bzr_rev, inventory)
+            self._store_directories_slow(bzr_rev, new_tree)
             return self._store_tree(bzr_rev)
 
         old_tree = self._get_revision_tree(self._prev_revision.revision_id)
-        new_tree = self._get_revision_tree(bzr_rev.revision_id)
 
         delta = new_tree.changes_from(old_tree)
 
         if delta.renamed or delta.copied:
             # Figuring out all nested and possibly conflicting renames is a lot
             # of effort for very few revisions, just go the slow way
-            self._store_directories_slow(bzr_rev, inventory)
+            self._store_directories_slow(bzr_rev, new_tree)
             return self._store_tree(bzr_rev)
 
         to_remove = sorted(
@@ -485,8 +473,10 @@ class BazaarLoader(BaseLoader):
         # same time, for example
         for change in itertools.chain(delta.kind_changed, delta.added, delta.modified):
             path = change.path[1]
-            entry = inventory.get_entry(change.file_id)
-            content = self.store_content(bzr_rev, path, entry)
+            (kind, size, executable, _sha1_or_link) = new_tree.path_content_summary(
+                path
+            )
+            content = self.store_content(bzr_rev, path, kind, executable, size)
             self._last_root[path.encode()] = content
 
         self._prev_revision = bzr_rev
@@ -518,24 +508,31 @@ class BazaarLoader(BaseLoader):
         return release.id
 
     def store_content(
-        self, bzr_rev: BzrRevision, file_path: str, entry: InventoryEntry
+        self,
+        bzr_rev: BzrRevision,
+        file_path: str,
+        kind: str,
+        executable: bool,
+        size: int,
     ) -> from_disk.Content:
-        if entry.executable:
+        if executable:
             perms = from_disk.DentryPerms.executable_content
-        elif entry.kind == "directory":
+        elif kind == "directory":
             perms = from_disk.DentryPerms.directory
-        elif entry.kind == "symlink":
+        elif kind == "symlink":
             perms = from_disk.DentryPerms.symlink
-        elif entry.kind == "file":
+        elif kind == "file":
             perms = from_disk.DentryPerms.content
         else:  # pragma: no cover
             raise RuntimeError("Hit unreachable condition")
 
-        data = b""
-        if entry.has_text():
+        if kind == "file":
             rev_tree = self._get_revision_tree(bzr_rev.revision_id)
-            data = rev_tree.get_file(file_path).read()
-            assert len(data) == entry.text_size
+            with rev_tree.get_file(file_path) as f:
+                data = f.read()
+            assert len(data) == size
+        else:
+            data = b""
 
         content = Content.from_data(data)
 
@@ -543,17 +540,15 @@ class BazaarLoader(BaseLoader):
 
         return from_disk.Content({"sha1_git": content.sha1_git, "perms": perms})
 
-    def _get_bzr_revs_to_load(self) -> List[BzrRevision]:
+    def _get_bzr_revs_to_load(self) -> List[BzrRevisionId]:
         assert self.repo is not None
-        repo: repository.Repository = self.repo
         self.log.debug("Getting fully sorted revision tree")
         if self.head_revision_id == NULL_REVISION:
             return []
-        head_revision = repo.get_revision(self.head_revision_id)
         # bazaar's model doesn't allow it to iterate on its graph from
         # the bottom lazily, but basically all DAGs (especially bzr ones)
         # are small enough to fit in RAM.
-        ancestors_iter = self._iterate_ancestors(head_revision)
+        ancestors_iter = self._iterate_ancestors(self.head_revision_id)
         ancestry = []
         for rev, parents in ancestors_iter:
             if parents is None:
@@ -587,10 +582,12 @@ class BazaarLoader(BaseLoader):
             return new_revisions
         return all_revisions
 
-    def _iterate_ancestors(self, rev: BzrRevision) -> Iterator[BzrRevisionId]:
+    def _iterate_ancestors(
+        self, revision_id: BzrRevisionId
+    ) -> Iterator[Tuple[BzrRevisionId, Tuple[BzrRevisionId]]]:
         """Return an iterator of this revision's ancestors"""
         assert self.repo is not None
-        return self.repo.get_graph().iter_ancestry([rev.revision_id])
+        return self.repo.get_graph().iter_ancestry([revision_id])
 
     # We want to cache at most the current revision and the last, no need to
     # take cache more than this.
@@ -615,9 +612,7 @@ class BazaarLoader(BaseLoader):
         self._prev_revision = bzr_rev
         return self._last_root.hash
 
-    def _store_directories_slow(
-        self, bzr_rev: BzrRevision, inventory: Inventory
-    ) -> None:
+    def _store_directories_slow(self, bzr_rev: BzrRevision, tree: Tree) -> None:
         """Store a revision's directories.
 
         This is the slow variant: it does not use a diff from the last revision
@@ -629,11 +624,13 @@ class BazaarLoader(BaseLoader):
         # Don't reuse the last root, we're listing everything anyway, and we
         # could be keeping around deleted files
         self._last_root = BzrDirectory()
-        for path, entry in inventory.iter_entries():
+        for path, entry in tree.iter_entries_by_dir():
             if path == "":
                 # root repo is created by default
                 continue
-            content = self.store_content(bzr_rev, path, entry)
+            content = self.store_content(
+                bzr_rev, path, entry.kind, entry.executable, entry.text_size
+            )
             self._last_root[path.encode()] = content
 
     def _get_revision_parents(self, bzr_rev: BzrRevision) -> Tuple[Sha1Git, ...]:
@@ -688,7 +685,7 @@ class BazaarLoader(BaseLoader):
     def head_revision_id(self) -> BzrRevisionId:
         """Returns the Bazaar revision id of the branch's head.
 
-        Bazaar/Breezy branches do not have multiple heads."""
+        Bazaar branches do not have multiple heads."""
         assert self.repo is not None
         if self._head_revision_id is None:
             self._head_revision_id = self.branch.last_revision()
