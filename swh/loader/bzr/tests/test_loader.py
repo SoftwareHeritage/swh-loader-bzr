@@ -1,11 +1,14 @@
-# Copyright (C) 2022  The Software Heritage developers
+# Copyright (C) 2022-2023  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
+
+from datetime import datetime
 import os
 from pathlib import Path
 
 from breezy.builtins import cmd_uncommit
+from breezy.revision import Revision as BzrRevision
 import pytest
 
 from swh.loader.bzr.loader import BazaarLoader, BzrDirectory
@@ -16,6 +19,7 @@ from swh.loader.tests import (
 )
 from swh.model.from_disk import Content
 from swh.model.hashutil import hash_to_bytes
+from swh.model.model import Directory
 from swh.storage.algos.snapshot import snapshot_get_latest
 
 # Generated repositories:
@@ -428,3 +432,34 @@ def test_incremental_uncommitted_head(swh_storage, datadir, tmp_path):
     # Everything is loaded correctly
     stats = get_stats(swh_storage)
     assert stats == {**expected_stats, "origin_visit": 1 + 1, "snapshot": 1 + 1}
+
+
+@pytest.mark.parametrize("committer", ["John Doe <john.doe@example.org>", "", None])
+def test_store_revision_with_empty_or_none_committer(swh_storage, mocker, committer):
+    repo_url = "https://example.org/bzr"
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+
+    mocker.patch.object(
+        loader, "store_directories", return_value=Directory(entries=()).id
+    )
+
+    author = "John Doe <john.doe@example.org>"
+    bzr_rev_id = b"john.doe@example.org-20090420060159-7k8cgljzk05xcm0l"
+    bzr_rev = BzrRevision(revision_id=bzr_rev_id, properties={"author": author})
+    bzr_rev.committer = committer
+    bzr_rev.timestamp = datetime.now().timestamp()
+    bzr_rev.timezone = 0
+    bzr_rev.message = "test"
+
+    loader.store_revision(bzr_rev)
+    loader.flush()
+
+    swh_rev_id = loader._get_revision_id_from_bzr_id(bzr_rev_id)
+    swh_rev = swh_storage.revision_get([swh_rev_id])[0]
+
+    if committer is not None:
+        assert swh_rev.committer.fullname == committer.encode()
+        assert swh_rev.committer_date is not None
+    else:
+        assert swh_rev.committer is None
+        assert swh_rev.committer_date is None
