@@ -1,4 +1,4 @@
-# Copyright (C) 2021-2022  The Software Heritage developers
+# Copyright (C) 2021-2023  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -409,16 +409,18 @@ class BazaarLoader(BaseLoader):
         timezone = round(int(bzr_rev.timezone) / 60)
         date = TimestampWithTimezone.from_numeric_offset(timestamp, timezone, False)
 
+        committer = (
+            Person.from_fullname(bzr_rev.committer.encode())
+            if bzr_rev.committer is not None
+            else None
+        )
+
         # TODO (how) should we store multiple authors? (T3887)
         revision = Revision(
             author=Person.from_fullname(bzr_rev.get_apparent_authors()[0].encode()),
             date=date,
-            committer=(
-                Person.from_fullname(bzr_rev.committer.encode())
-                if bzr_rev.committer
-                else None
-            ),
-            committer_date=date,
+            committer=committer,
+            committer_date=date if committer is not None else None,
             type=RevisionType.BAZAAR,
             directory=directory,
             message=bzr_rev.message.encode(),
