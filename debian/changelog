@@ -1,3 +1,13 @@
+swh-loader-bzr (1.3.5-1~swh1) unstable-swh; urgency=medium
+
+  * New upstream release 1.3.5     - (tagged by Antoine R. Dumont
+    (@ardumont) <antoine.romain.dumont@gmail.com> on 2023-05-03 16:23:20
+    +0200)
+  * Upstream changes:     - v1.3.5     - loader: Ensure all committer
+    values are handled in store_revision
+
+ -- Software Heritage autobuilder (on jenkins-debian1) <jenkins@jenkins-debian1.internal.softwareheritage.org>  Wed, 03 May 2023 14:27:05 +0000
+
 swh-loader-bzr (1.3.4-1~swh1) unstable-swh; urgency=medium
 
   * New upstream release 1.3.4     - (tagged by Antoine R. Dumont
