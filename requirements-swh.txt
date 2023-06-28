@@ -1,4 +1,4 @@
 swh.model >= 2.6.1
 swh.storage >= 0.41.1
 swh.scheduler >= 0.23.0
-swh.loader.core >= 5.0.0
+swh.loader.core >= 5.7.3
