@@ -1,4 +1,4 @@
-# Copyright (C) 2022  The Software Heritage developers
+# Copyright (C) 2022-2023  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -7,9 +7,16 @@ import uuid
 
 import pytest
 
+from swh.loader.tests import assert_module_tasks_are_scheduler_ready
 from swh.scheduler.model import ListedOrigin, Lister
 
 NAMESPACE = "swh.loader.bzr"
+
+
+def test_tasks_loader_visit_type_match_task_name():
+    import swh.loader.bzr
+
+    assert_module_tasks_are_scheduler_ready([swh.loader.bzr])
 
 
 @pytest.fixture
