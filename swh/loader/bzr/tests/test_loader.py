@@ -17,7 +17,7 @@ from swh.loader.tests import (
     get_stats,
     prepare_repository_from_archive,
 )
-from swh.model.from_disk import Content
+from swh.model.from_disk import Content, DentryPerms
 from swh.model.hashutil import hash_to_bytes
 from swh.model.model import Directory
 from swh.storage.algos.snapshot import snapshot_get_latest
@@ -90,7 +90,7 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
 
     stats = get_stats(swh_storage)
     assert stats == {
-        "content": 7,
+        "content": 8,
         "directory": 7,
         "origin": 1,
         "origin_visit": 1,
@@ -100,7 +100,7 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
         "snapshot": 1,
     }
     # It contains associated bugs, making it a good complete candidate
-    example_revision = hash_to_bytes("18bb5b2c866c10c58a191afcd0b450a8727f1c62")
+    example_revision = hash_to_bytes("024aa290d57f4ee13e5620fb3a6647cf477763e6")
     revision = loader.storage.revision_get([example_revision])[0]
     assert revision.to_dict() == {
         "message": b"fixing bugs",
@@ -123,10 +123,10 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
             "offset_bytes": b"+0100",
         },
         "type": "bzr",
-        "directory": b"s0\xf3pe\xa3\x12\x05{\xc7\xbc\x86\xa6\x14.\xc1b\x1c\xeb\x05",
+        "directory": hash_to_bytes("f1a78cc872a0d04fe5ac2121ed9bcf56d942ede0"),
         "synthetic": False,
         "metadata": None,
-        "parents": (b"*V\xf5\n\xf0?\x1d{kE4\xda(\xb1\x08R\x83\x87-\xb6",),
+        "parents": (b"\x1bN\xc9\x1b\x99\x93\xf7/^xx\xc4\xb9\t0\xa7i\xeb1y",),
         "id": example_revision,
         "extra_headers": (
             (b"time_offset_seconds", b"3600"),
@@ -134,6 +134,17 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
             (b"bug", b"fixed https://bz.example.com/?show_bug=4321"),
         ),
     }
+
+    # check symlink link -> dir in root directory is correctly archived
+    link_entry = [
+        entry
+        for entry in loader.storage.directory_ls(revision.directory)
+        if entry["type"] == "file"
+        and entry["perms"] == DentryPerms.symlink
+        and entry["name"] == b"link"
+    ]
+    assert link_entry
+    assert loader.storage.content_get_data(link_entry[0]["sha1"]) == b"dir"
 
 
 def test_needs_upgrade(swh_storage, datadir, tmp_path, mocker):
@@ -266,7 +277,7 @@ def test_metadata_and_type_changes(swh_storage, datadir, tmp_path):
 
     stats = get_stats(swh_storage)
     assert stats == {
-        "content": 1,
+        "content": 3,
         "directory": 9,
         "origin": 1,
         "origin_visit": 1,
@@ -359,7 +370,7 @@ def test_incremental_nominal(swh_storage, datadir, tmp_path):
     assert res == {"status": "eventful"}
     stats = get_stats(swh_storage)
     assert stats == {
-        "content": 6,
+        "content": 7,
         "directory": 4,
         "origin": 1,
         "origin_visit": 1,
@@ -378,7 +389,7 @@ def test_incremental_nominal(swh_storage, datadir, tmp_path):
 
     stats = get_stats(swh_storage)
     expected_stats = {
-        "content": 7,
+        "content": 8,
         "directory": 7,
         "origin": 1,
         "origin_visit": 2,
@@ -410,7 +421,7 @@ def test_incremental_uncommitted_head(swh_storage, datadir, tmp_path):
     assert res == {"status": "eventful"}
     stats = get_stats(swh_storage)
     expected_stats = {
-        "content": 7,
+        "content": 8,
         "directory": 7,
         "origin": 1,
         "origin_visit": 1,

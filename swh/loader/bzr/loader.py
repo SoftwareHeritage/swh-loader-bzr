@@ -478,7 +478,14 @@ class BazaarLoader(BaseLoader):
             (kind, size, executable, _sha1_or_link) = new_tree.path_content_summary(
                 path
             )
-            content = self.store_content(bzr_rev, path, kind, executable, size)
+            content = self.store_content(
+                bzr_rev,
+                path,
+                kind,
+                executable,
+                size,
+                _sha1_or_link if kind == "symlink" else None,
+            )
             self._last_root[path.encode()] = content
 
         self._prev_revision = bzr_rev
@@ -516,6 +523,7 @@ class BazaarLoader(BaseLoader):
         kind: str,
         executable: bool,
         size: int,
+        symlink_target: Optional[str] = None,
     ) -> from_disk.Content:
         if executable:
             perms = from_disk.DentryPerms.executable_content
@@ -533,6 +541,9 @@ class BazaarLoader(BaseLoader):
             with rev_tree.get_file(file_path) as f:
                 data = f.read()
             assert len(data) == size
+        elif kind == "symlink":
+            assert symlink_target is not None
+            data = symlink_target.encode()
         else:
             data = b""
 
@@ -631,7 +642,12 @@ class BazaarLoader(BaseLoader):
                 # root repo is created by default
                 continue
             content = self.store_content(
-                bzr_rev, path, entry.kind, entry.executable, entry.text_size
+                bzr_rev,
+                path,
+                entry.kind,
+                entry.executable,
+                entry.text_size,
+                entry.symlink_target if entry.kind == "symlink" else None,
             )
             self._last_root[path.encode()] = content
 
