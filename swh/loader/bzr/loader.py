@@ -6,6 +6,9 @@
 """This document contains a SWH loader for ingesting repository data
 from Bazaar or Breezy.
 """
+
+from __future__ import annotations
+
 from datetime import datetime
 from functools import lru_cache, partial
 import itertools
@@ -81,14 +84,12 @@ class UnknownRepositoryFormat(Exception):
 
 
 class BzrDirectory(from_disk.Directory):
-    """A more practical directory.
-
-    - creates missing parent directories
-    - removes empty directories
+    """A more practical directory to create missing parent directories
+    when adding a path.
     """
 
     def __setitem__(
-        self, path: bytes, value: Union[from_disk.Content, "BzrDirectory"]
+        self, path: bytes, value: Union[from_disk.Content, BzrDirectory]
     ) -> None:
         if b"/" in path:
             head, tail = path.split(b"/", 1)
@@ -102,19 +103,9 @@ class BzrDirectory(from_disk.Directory):
         else:
             super().__setitem__(path, value)
 
-    def __delitem__(self, path: bytes) -> None:
-        super().__delitem__(path)
-
-        while b"/" in path:  # remove empty parent directories
-            path = path.rsplit(b"/", 1)[0]
-            if len(self[path]) == 0:
-                super().__delitem__(path)
-            else:
-                break
-
     def get(
         self, path: bytes, default: Optional[T] = None
-    ) -> Optional[Union[from_disk.Content, "BzrDirectory", T]]:
+    ) -> Optional[Union[from_disk.Content, BzrDirectory, T]]:
         # TODO move to swh.model.from_disk.Directory
         try:
             return self[path]

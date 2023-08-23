@@ -9,6 +9,7 @@ from pathlib import Path
 
 from breezy.builtins import cmd_uncommit
 from breezy.revision import Revision as BzrRevision
+from breezy.tests import TestCaseWithTransport
 import pytest
 
 from swh.loader.bzr.loader import BazaarLoader, BzrDirectory
@@ -278,7 +279,7 @@ def test_metadata_and_type_changes(swh_storage, datadir, tmp_path):
     stats = get_stats(swh_storage)
     assert stats == {
         "content": 3,
-        "directory": 9,
+        "directory": 11,
         "origin": 1,
         "origin_visit": 1,
         "release": 0,
@@ -330,11 +331,6 @@ def test_bzr_directory():
     assert directory[b"a/decently/enough/nested/path"] == Content(b"whatever")
     assert directory[b"a/decently/other_node"] == Content(b"whatever else")
     assert directory[b"another_node"] == Content(b"contents")
-
-    del directory[b"a/decently/enough/nested/path"]
-    assert directory.get(b"a/decently/enough/nested/path") is None
-    assert directory.get(b"a/decently/enough/nested/") is None
-    assert directory.get(b"a/decently/enough") is None
 
     # no KeyError
     directory[b"a/decently"]
@@ -474,3 +470,40 @@ def test_store_revision_with_empty_or_none_committer(swh_storage, mocker, commit
     else:
         assert swh_rev.committer is None
         assert swh_rev.committer_date is None
+
+
+class TestBzrLoader(TestCaseWithTransport):
+    @pytest.fixture(autouse=True)
+    def storage(self, swh_storage):
+        self.swh_storage = swh_storage
+
+    def test_empty_dirs_are_preserved(self):
+        working_tree = self.make_branch_and_tree(".")
+
+        dirs_and_files = ["foo/", "foo/foo.py", "bar/", "bar/bar.py"]
+        self.build_tree(dirs_and_files)
+        working_tree.add(dirs_and_files)
+        working_tree.commit(message="add dirs and files", rev_id=b"rev1")
+
+        os.remove("foo/foo.py")
+        os.remove("bar/bar.py")
+        working_tree.commit(message="remove files", rev_id=b"rev2")
+
+        rev_tree = working_tree.branch.repository.revision_tree(b"rev2")
+
+        assert rev_tree.has_filename("foo")
+        assert rev_tree.has_filename("bar")
+
+        repo_url = self.get_url()
+        loader = BazaarLoader(self.swh_storage, repo_url, directory=repo_url)
+        assert loader.load() == {"status": "eventful"}
+
+        snapshot = snapshot_get_latest(self.swh_storage, repo_url)
+        swh_rev_id = snapshot.branches[b"trunk"].target
+        swh_rev = self.swh_storage.revision_get([swh_rev_id])[0]
+
+        swh_root_dir_entries = list(self.swh_storage.directory_ls(swh_rev.directory))
+
+        assert {
+            entry["name"] for entry in swh_root_dir_entries if entry["type"] == "dir"
+        } == {b"foo", b"bar"}
