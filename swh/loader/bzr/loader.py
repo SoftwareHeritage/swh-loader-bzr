@@ -469,15 +469,24 @@ class BazaarLoader(BaseLoader):
             (kind, size, executable, _sha1_or_link) = new_tree.path_content_summary(
                 path
             )
-            content = self.store_content(
-                bzr_rev,
-                path,
-                kind,
-                executable,
-                size,
-                _sha1_or_link if kind == "symlink" else None,
-            )
-            self._last_root[path.encode()] = content
+            dir_entry: Union[BzrDirectory, from_disk.Content]
+            if kind in ("file", "symlink"):
+                dir_entry = self.store_content(
+                    bzr_rev,
+                    path,
+                    kind,
+                    executable,
+                    size,
+                    _sha1_or_link if kind == "symlink" else None,
+                )
+            elif kind == "directory":
+                dir_entry = BzrDirectory()
+            else:
+                raise RuntimeError(
+                    f"Unable to process directory entry {path} of kind {kind}"
+                )
+
+            self._last_root[path.encode()] = dir_entry
 
         self._prev_revision = bzr_rev
         return self._store_tree(bzr_rev)
@@ -516,27 +525,22 @@ class BazaarLoader(BaseLoader):
         size: int,
         symlink_target: Optional[str] = None,
     ) -> from_disk.Content:
+        assert kind in ("file", "symlink")
         if executable:
             perms = from_disk.DentryPerms.executable_content
-        elif kind == "directory":
-            perms = from_disk.DentryPerms.directory
         elif kind == "symlink":
             perms = from_disk.DentryPerms.symlink
-        elif kind == "file":
+        else:  # kind == "file":
             perms = from_disk.DentryPerms.content
-        else:  # pragma: no cover
-            raise RuntimeError("Hit unreachable condition")
 
         if kind == "file":
             rev_tree = self._get_revision_tree(bzr_rev.revision_id)
             with rev_tree.get_file(file_path) as f:
                 data = f.read()
             assert len(data) == size
-        elif kind == "symlink":
+        else:  # kind == "symlink":
             assert symlink_target is not None
             data = symlink_target.encode()
-        else:
-            data = b""
 
         content = Content.from_data(data)
 
@@ -632,15 +636,25 @@ class BazaarLoader(BaseLoader):
             if path == "":
                 # root repo is created by default
                 continue
-            content = self.store_content(
-                bzr_rev,
-                path,
-                entry.kind,
-                entry.executable,
-                entry.text_size,
-                entry.symlink_target if entry.kind == "symlink" else None,
-            )
-            self._last_root[path.encode()] = content
+
+            dir_entry: Union[BzrDirectory, from_disk.Content]
+            if entry.kind in ("file", "symlink"):
+                dir_entry = self.store_content(
+                    bzr_rev,
+                    path,
+                    entry.kind,
+                    entry.executable,
+                    entry.text_size,
+                    entry.symlink_target if entry.kind == "symlink" else None,
+                )
+            elif entry.kind == "directory":
+                dir_entry = BzrDirectory()
+            else:
+                raise RuntimeError(
+                    f"Unable to process directory entry {path} of kind {entry.kind}"
+                )
+
+            self._last_root[path.encode()] = dir_entry
 
     def _get_revision_parents(self, bzr_rev: BzrRevision) -> Tuple[Sha1Git, ...]:
         parents = []

@@ -91,8 +91,8 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
 
     stats = get_stats(swh_storage)
     assert stats == {
-        "content": 8,
-        "directory": 7,
+        "content": 7,
+        "directory": 8,
         "origin": 1,
         "origin_visit": 1,
         "release": 3,
@@ -101,7 +101,7 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
         "snapshot": 1,
     }
     # It contains associated bugs, making it a good complete candidate
-    example_revision = hash_to_bytes("024aa290d57f4ee13e5620fb3a6647cf477763e6")
+    example_revision = hash_to_bytes("3c3f39bd71fcfd63a7cfe874dcf206928ea6b414")
     revision = loader.storage.revision_get([example_revision])[0]
     assert revision.to_dict() == {
         "message": b"fixing bugs",
@@ -124,10 +124,10 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
             "offset_bytes": b"+0100",
         },
         "type": "bzr",
-        "directory": hash_to_bytes("f1a78cc872a0d04fe5ac2121ed9bcf56d942ede0"),
+        "directory": hash_to_bytes("afd4a07b7a41f95b43793d319844517bc7dd8655"),
         "synthetic": False,
         "metadata": None,
-        "parents": (b"\x1bN\xc9\x1b\x99\x93\xf7/^xx\xc4\xb9\t0\xa7i\xeb1y",),
+        "parents": (hash_to_bytes("99327840dec4671728dae17f44727a226d7c03d1"),),
         "id": example_revision,
         "extra_headers": (
             (b"time_offset_seconds", b"3600"),
@@ -366,8 +366,8 @@ def test_incremental_nominal(swh_storage, datadir, tmp_path):
     assert res == {"status": "eventful"}
     stats = get_stats(swh_storage)
     assert stats == {
-        "content": 7,
-        "directory": 4,
+        "content": 6,
+        "directory": 5,
         "origin": 1,
         "origin_visit": 1,
         "release": 2,
@@ -385,8 +385,8 @@ def test_incremental_nominal(swh_storage, datadir, tmp_path):
 
     stats = get_stats(swh_storage)
     expected_stats = {
-        "content": 8,
-        "directory": 7,
+        "content": 7,
+        "directory": 8,
         "origin": 1,
         "origin_visit": 2,
         "release": 3,
@@ -417,8 +417,8 @@ def test_incremental_uncommitted_head(swh_storage, datadir, tmp_path):
     assert res == {"status": "eventful"}
     stats = get_stats(swh_storage)
     expected_stats = {
-        "content": 8,
-        "directory": 7,
+        "content": 7,
+        "directory": 8,
         "origin": 1,
         "origin_visit": 1,
         "release": 3,
@@ -480,19 +480,28 @@ class TestBzrLoader(TestCaseWithTransport):
     def test_empty_dirs_are_preserved(self):
         working_tree = self.make_branch_and_tree(".")
 
-        dirs_and_files = ["foo/", "foo/foo.py", "bar/", "bar/bar.py"]
+        dirs_and_files = ["foo/", "foo/foo.py", "bar/", "bar/bar.py", "baz/", "foobar"]
         self.build_tree(dirs_and_files)
         working_tree.add(dirs_and_files)
         working_tree.commit(message="add dirs and files", rev_id=b"rev1")
 
         os.remove("foo/foo.py")
         os.remove("bar/bar.py")
-        working_tree.commit(message="remove files", rev_id=b"rev2")
+        working_tree.commit(message="remove files in dirs", rev_id=b"rev2")
 
-        rev_tree = working_tree.branch.repository.revision_tree(b"rev2")
+        os.remove("foobar")
+        self.build_tree(["foobar/"])
+        working_tree.add(["foobar/"])
+        working_tree.commit(
+            message="turn foobar file into an empty directory", rev_id=b"rev3"
+        )
+
+        rev_tree = working_tree.branch.repository.revision_tree(b"rev3")
 
         assert rev_tree.has_filename("foo")
         assert rev_tree.has_filename("bar")
+        assert rev_tree.has_filename("baz")
+        assert rev_tree.has_filename("foobar")
 
         repo_url = self.get_url()
         loader = BazaarLoader(self.swh_storage, repo_url, directory=repo_url)
@@ -506,4 +515,4 @@ class TestBzrLoader(TestCaseWithTransport):
 
         assert {
             entry["name"] for entry in swh_root_dir_entries if entry["type"] == "dir"
-        } == {b"foo", b"bar"}
+        } == {b"foo", b"bar", b"baz", b"foobar"}
