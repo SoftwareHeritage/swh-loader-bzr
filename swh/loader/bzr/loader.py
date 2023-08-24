@@ -455,9 +455,6 @@ class BazaarLoader(BaseLoader):
             delta.removed + delta.missing, key=sort_changes, reverse=True
         )
         for change in to_remove:
-            if change.kind[0] == "directory":
-                # empty directories will delete themselves in `self._last_root`
-                continue
             path = change.path[0]
             del self._last_root[path.encode()]
 

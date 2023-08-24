@@ -279,7 +279,7 @@ def test_metadata_and_type_changes(swh_storage, datadir, tmp_path):
     stats = get_stats(swh_storage)
     assert stats == {
         "content": 3,
-        "directory": 11,
+        "directory": 10,
         "origin": 1,
         "origin_visit": 1,
         "release": 0,
@@ -516,3 +516,31 @@ class TestBzrLoader(TestCaseWithTransport):
         assert {
             entry["name"] for entry in swh_root_dir_entries if entry["type"] == "dir"
         } == {b"foo", b"bar", b"baz", b"foobar"}
+
+    def test_empty_dirs_removal(self):
+        working_tree = self.make_branch_and_tree(".")
+
+        dirs = ["foo/", "foo/foo/", "bar/", "bar/bar/"]
+        self.build_tree(dirs)
+        working_tree.add(dirs)
+        working_tree.commit(message="add dirs and subdirs", rev_id=b"rev1")
+
+        os.rmdir("foo/foo")
+        os.rmdir("bar/bar")
+        working_tree.commit(message="remove empty subdirs", rev_id=b"rev2")
+
+        repo_url = self.get_url()
+        loader = BazaarLoader(self.swh_storage, repo_url, directory=repo_url)
+        assert loader.load() == {"status": "eventful"}
+
+        snapshot = snapshot_get_latest(self.swh_storage, repo_url)
+        swh_rev_id = snapshot.branches[b"trunk"].target
+        swh_rev = self.swh_storage.revision_get([swh_rev_id])[0]
+
+        swh_root_dir_entries = list(
+            self.swh_storage.directory_ls(swh_rev.directory, recursive=True)
+        )
+
+        assert {
+            entry["name"] for entry in swh_root_dir_entries if entry["type"] == "dir"
+        } == {b"foo", b"bar"}
