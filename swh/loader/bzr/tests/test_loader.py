@@ -70,9 +70,11 @@ def test_nominal(swh_storage, datadir, tmp_path, do_clone):
 
     if do_clone:
         # Check that the cloning mechanism works
-        loader = BazaarLoader(swh_storage, repo_url)
+        loader = BazaarLoader(swh_storage, repo_url, check_revision=1)
     else:
-        loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+        loader = BazaarLoader(
+            swh_storage, repo_url, directory=repo_url, check_revision=1
+        )
     res = loader.load()
     assert res == {"status": "eventful"}
 
@@ -204,7 +206,9 @@ def test_renames(swh_storage, datadir, tmp_path):
     archive_path = Path(datadir, "renames.tgz")
     repo_url = prepare_repository_from_archive(archive_path, "renames", tmp_path)
 
-    res = BazaarLoader(swh_storage, repo_url, directory=repo_url).load()
+    res = BazaarLoader(
+        swh_storage, repo_url, directory=repo_url, check_revision=1
+    ).load()
     assert res == {"status": "eventful"}
 
     assert_last_visit_matches(swh_storage, repo_url, status="full", type="bzr")
@@ -264,7 +268,9 @@ def test_metadata_and_type_changes(swh_storage, datadir, tmp_path):
         archive_path, "metadata-and-type-changes", tmp_path
     )
 
-    res = BazaarLoader(swh_storage, repo_url, directory=repo_url).load()
+    res = BazaarLoader(
+        swh_storage, repo_url, directory=repo_url, check_revision=1
+    ).load()
     assert res == {"status": "eventful"}
 
     assert_last_visit_matches(swh_storage, repo_url, status="full", type="bzr")
@@ -293,7 +299,7 @@ def test_ghosts(swh_storage, datadir, tmp_path):
     archive_path = Path(datadir, "ghosts.tgz")
     repo_url = prepare_repository_from_archive(archive_path, "ghosts", tmp_path)
 
-    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url, check_revision=1)
     assert loader._ghosts == set()
     res = loader.load()
     assert loader._ghosts == set((b"iamaghostboo",))
@@ -343,10 +349,10 @@ def test_incremental_noop(swh_storage, datadir, tmp_path):
     archive_path = Path(datadir, "nominal.tgz")
     repo_url = prepare_repository_from_archive(archive_path, "nominal", tmp_path)
 
-    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url, check_revision=1)
     res = loader.load()
     assert res == {"status": "eventful"}
-    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url, check_revision=1)
     res = loader.load()
     assert res == {"status": "uneventful"}
 
@@ -361,7 +367,7 @@ def test_incremental_nominal(swh_storage, datadir, tmp_path):
     do_uncommit(repo_url)
     do_uncommit(repo_url)
 
-    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url, check_revision=1)
     res = loader.load()
     assert res == {"status": "eventful"}
     stats = get_stats(swh_storage)
@@ -379,7 +385,7 @@ def test_incremental_nominal(swh_storage, datadir, tmp_path):
     # Load the complete repo now
     repo_url = prepare_repository_from_archive(archive_path, "nominal", tmp_path)
 
-    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url, check_revision=1)
     res = loader.load()
     assert res == {"status": "eventful"}
 
@@ -398,7 +404,7 @@ def test_incremental_nominal(swh_storage, datadir, tmp_path):
     assert stats == expected_stats
 
     # Nothing should change
-    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url, check_revision=1)
     res = loader.load()
     assert res == {"status": "uneventful"}
 
@@ -412,7 +418,7 @@ def test_incremental_uncommitted_head(swh_storage, datadir, tmp_path):
     archive_path = Path(datadir, "nominal.tgz")
     repo_url = prepare_repository_from_archive(archive_path, "nominal", tmp_path)
 
-    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url, check_revision=1)
     res = loader.load()
     assert res == {"status": "eventful"}
     stats = get_stats(swh_storage)
@@ -432,7 +438,7 @@ def test_incremental_uncommitted_head(swh_storage, datadir, tmp_path):
     # Remove the previously saved head
     do_uncommit(repo_url)
 
-    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url)
+    loader = BazaarLoader(swh_storage, repo_url, directory=repo_url, check_revision=1)
     res = loader.load()
     assert res == {"status": "eventful"}
 
@@ -504,7 +510,9 @@ class TestBzrLoader(TestCaseWithTransport):
         assert rev_tree.has_filename("foobar")
 
         repo_url = self.get_url()
-        loader = BazaarLoader(self.swh_storage, repo_url, directory=repo_url)
+        loader = BazaarLoader(
+            self.swh_storage, repo_url, directory=repo_url, check_revision=1
+        )
         assert loader.load() == {"status": "eventful"}
 
         snapshot = snapshot_get_latest(self.swh_storage, repo_url)
@@ -530,7 +538,9 @@ class TestBzrLoader(TestCaseWithTransport):
         working_tree.commit(message="remove empty subdirs", rev_id=b"rev2")
 
         repo_url = self.get_url()
-        loader = BazaarLoader(self.swh_storage, repo_url, directory=repo_url)
+        loader = BazaarLoader(
+            self.swh_storage, repo_url, directory=repo_url, check_revision=1
+        )
         assert loader.load() == {"status": "eventful"}
 
         snapshot = snapshot_get_latest(self.swh_storage, repo_url)

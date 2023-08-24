@@ -13,7 +13,7 @@ from datetime import datetime
 from functools import lru_cache, partial
 import itertools
 import os
-from tempfile import mkdtemp
+import tempfile
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, TypeVar, Union
 
 from breezy import errors as bzr_errors
@@ -21,6 +21,7 @@ from breezy import repository, tsort
 from breezy.branch import Branch as BzrBranch
 from breezy.builtins import cmd_branch, cmd_upgrade
 from breezy.controldir import ControlDir
+from breezy.export import export
 from breezy.revision import NULL_REVISION
 from breezy.revision import Revision as BzrRevision
 from breezy.revision import RevisionID as BzrRevisionId
@@ -29,6 +30,7 @@ from breezy.tree import Tree, TreeChange
 from swh.loader.core.loader import BaseLoader
 from swh.loader.core.utils import clean_dangling_folders, clone_with_timeout
 from swh.model import from_disk, swhids
+from swh.model.hashutil import hash_to_hex
 from swh.model.model import (
     Content,
     ExtID,
@@ -141,6 +143,7 @@ class BazaarLoader(BaseLoader):
         visit_date: Optional[datetime] = None,
         temp_directory: str = "/tmp",
         clone_timeout_seconds: int = 7200,
+        check_revision: int = 0,
         **kwargs: Any,
     ):
         super().__init__(storage=storage, origin_url=url, **kwargs)
@@ -166,6 +169,7 @@ class BazaarLoader(BaseLoader):
         self.visit_date = visit_date or self.visit_date
         self.directory = directory
         self.repo: Optional[repository.Repository] = None
+        self.check_revision = check_revision
 
     def pre_cleanup(self) -> None:
         """As a first step, will try and check for dangling data to cleanup.
@@ -257,7 +261,7 @@ class BazaarLoader(BaseLoader):
 
         """
         if not self.directory:  # no local repository
-            self._repo_directory = mkdtemp(
+            self._repo_directory = tempfile.mkdtemp(
                 prefix=TEMPORARY_DIR_PREFIX_PATTERN,
                 suffix=f"-{os.getpid()}",
                 dir=self._temp_directory,
@@ -419,6 +423,24 @@ class BazaarLoader(BaseLoader):
             synthetic=False,
             parents=self._get_revision_parents(bzr_rev),
         )
+
+        revno = (
+            self.branch.revision_id_to_dotted_revno(bzr_rev.revision_id)[0]
+            if self.repo
+            else None
+        )
+
+        if self.check_revision and revno and revno % self.check_revision == 0:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                export(self._get_revision_tree(bzr_rev.revision_id), tmp_dir)
+                exported_dir = from_disk.Directory.from_disk(path=tmp_dir.encode())
+                if directory != exported_dir.hash:
+                    raise ValueError(
+                        f"Hash tree computation divergence detected at revision {revno}"
+                        f" ({bzr_rev.revision_id.decode()}), "
+                        f"expected: {hash_to_hex(exported_dir.hash)}, "
+                        f"actual: {hash_to_hex(directory)}"
+                    )
 
         self._revision_id_to_sha1git[bzr_rev.revision_id] = revision.id
         self.storage.revision_add([revision])
