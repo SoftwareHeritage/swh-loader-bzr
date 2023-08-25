@@ -4,4 +4,3 @@ include version.txt
 include README.md
 include conftest.py
 recursive-include swh py.typed
-recursive-include swh/loader/bzr/tests/data/ *
