@@ -498,7 +498,10 @@ class BazaarLoader(BaseLoader):
                     size,
                     _sha1_or_link if kind == "symlink" else None,
                 )
-            elif kind == "directory":
+            elif kind in ("directory", "tree-reference"):
+                # nested tree is not recursively imported as it might be missing in
+                # the repository, create an empty directory instead as bzr export does
+                # by default
                 dir_entry = BzrDirectory()
             else:
                 raise RuntimeError(
@@ -666,7 +669,10 @@ class BazaarLoader(BaseLoader):
                     entry.text_size,
                     entry.symlink_target if entry.kind == "symlink" else None,
                 )
-            elif entry.kind == "directory":
+            elif entry.kind in ("directory", "tree-reference"):
+                # nested tree is not recursively imported as it might be missing in
+                # the repository, create an empty directory instead as bzr export does
+                # by default
                 dir_entry = BzrDirectory()
             else:
                 raise RuntimeError(

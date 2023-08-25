@@ -7,11 +7,15 @@ from datetime import datetime
 import os
 import shutil
 import stat
+from subprocess import run
+import threading
 
 from breezy.bzr.bzrdir import BzrDir
 from breezy.commands import builtin_command_names
 from breezy.revision import Revision as BzrRevision
 from breezy.tests import TestCaseWithTransport
+from dulwich.repo import Repo
+from dulwich.server import DictBackend, TCPGitServer
 import pytest
 
 from swh.loader.bzr.loader import BazaarLoader, BzrDirectory
@@ -109,9 +113,10 @@ def test_store_revision_with_empty_or_none_committer(swh_storage, mocker, commit
 
 class TestBzrLoader(TestCaseWithTransport):
     @pytest.fixture(autouse=True)
-    def fixtures(self, swh_storage, mocker):
+    def fixtures(self, swh_storage, mocker, tmp_path):
         self.swh_storage = swh_storage
         self.mocker = mocker
+        self.tmp_path = tmp_path
 
     @classmethod
     def setUpClass(cls):
@@ -757,3 +762,87 @@ class TestBzrLoader(TestCaseWithTransport):
         assert {
             entry["name"] for entry in swh_root_dir_entries if entry["type"] == "dir"
         } == {b"foo", b"bar"}
+
+    @pytest.fixture(autouse=True)
+    def git_server(self):
+        """Create a simple git repository containing one file.
+        This repository will be added as a submodule in another git repository.
+        As git forbids to add a submodule from the local filesystem, we serve
+        the repository using TCP."""
+        first_git_repo_path = os.path.join(self.tmp_path, "first_git_repo")
+        first_git_repo = Repo.init(first_git_repo_path, mkdir=True)
+
+        with open(os.path.join(first_git_repo_path, "file"), "w") as f:
+            f.write("foo")
+
+        first_git_repo.stage(["file"])
+        first_git_repo.do_commit(
+            b"file added",
+            committer=b"Test Committer <test@example.org>",
+            author=b"Test Author <test@example.org>",
+            commit_timestamp=12395,
+            commit_timezone=0,
+            author_timestamp=12395,
+            author_timezone=0,
+        )
+
+        backend = DictBackend({b"/": first_git_repo})
+        git_server = TCPGitServer(backend, b"localhost", 0)
+
+        git_server_thread = threading.Thread(target=git_server.serve)
+        git_server_thread.start()
+
+        _, port = git_server.socket.getsockname()
+        self.git_server_url = f"git://localhost:{port}/"
+
+        yield
+
+        git_server.shutdown()
+        git_server.server_close()
+        git_server_thread.join()
+
+    def test_nested_tree_handling(self):
+        # create a new git repository
+        git_repo_path = os.path.join(self.tmp_path, "git_repo")
+        run(["git", "init", git_repo_path], check=True)
+
+        # add the repository served by the git_server fixture as a
+        # submodule in it
+        run(
+            ["git", "submodule", "add", self.git_server_url, "submodule"],
+            check=True,
+            cwd=git_repo_path,
+        )
+        run(
+            ["git", "commit", "-m", "submodule added"],
+            check=True,
+            cwd=git_repo_path,
+        )
+
+        # create a bazaar repository from the git repository created above
+        self.disable_directory_isolation()
+        self.run_bzr(f"git-import file://{git_repo_path} bzr_repo")
+        # ensure it has a single branch
+        self.run_bzr("remove-branch master", working_dir="bzr_repo")
+
+        # load bazaar repository
+        repo_url = self.get_url() + "/bzr_repo"
+        loader = BazaarLoader(
+            self.swh_storage, repo_url, directory=repo_url, check_revision=1
+        )
+        assert loader.load() == {"status": "eventful"}
+
+        # check submodule has been imported as an empty directory
+        snapshot = snapshot_get_latest(self.swh_storage, repo_url)
+        swh_rev_id = snapshot.branches[b"trunk"].target
+        swh_rev = self.swh_storage.revision_get([swh_rev_id])[0]
+        swh_root_dir_entries = list(
+            self.swh_storage.directory_ls(swh_rev.directory, recursive=True)
+        )
+        submodule_entry = [
+            entry
+            for entry in swh_root_dir_entries
+            if entry["type"] == "dir" and entry["name"] == b"submodule"
+        ]
+        assert submodule_entry
+        assert submodule_entry[0]["target"] == Directory(entries=()).id

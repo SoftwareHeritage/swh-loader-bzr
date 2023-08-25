@@ -1,3 +1,4 @@
+dulwich
 pytest
 pytest-mock
 swh.core[http] >= 0.0.61
