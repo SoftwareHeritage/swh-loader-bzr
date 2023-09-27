@@ -14,10 +14,9 @@ from functools import lru_cache, partial
 import itertools
 import os
 import tempfile
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, TypeVar, Union, Generator
 
 from breezy import errors as bzr_errors
-from breezy import tsort
 from breezy.branch import Branch as BzrBranch
 from breezy.builtins import cmd_branch, cmd_upgrade
 from breezy.export import export
@@ -305,7 +304,6 @@ class BazaarLoader(BaseLoader):
 
         branch.lock_read()
         self.branch = branch
-        self.head_revision_id  # set the property
         self.tags  # set the property
         return False
 
@@ -315,19 +313,14 @@ class BazaarLoader(BaseLoader):
         assert self.tags is not None
 
         # Insert revisions using a topological sorting
-        revs = self._get_bzr_revs_to_load()
-
-        if revs and revs[0] == NULL_REVISION:
-            # The first rev we load isn't necessarily `NULL_REVISION` even in a
-            # full load, as bzr allows for ghost revisions.
-            revs = revs[1:]
-
         length_ingested_revs = 0
-        for rev in revs:
+        for rev in self._get_bzr_revs_to_load():
             self.store_revision(self.branch.repository.get_revision(rev))
             length_ingested_revs += 1
 
-        if length_ingested_revs == 0:
+        if length_ingested_revs == 0 and (
+            self.branch.last_revision() in (self._latest_head, NULL_REVISION)
+        ):
             # no new revision ingested, so uneventful
             # still we'll make a snapshot, so we continue
             self._load_status = "uneventful"
@@ -360,9 +353,9 @@ class BazaarLoader(BaseLoader):
                 target_type=TargetType.RELEASE,
             )
 
-        if self.head_revision_id != NULL_REVISION:
+        if self.branch.last_revision() != NULL_REVISION:
             head_revision_git_hash = self._get_revision_id_from_bzr_id(
-                self.head_revision_id
+                self.branch.last_revision()
             )
             snapshot_branches[b"trunk"] = SnapshotBranch(
                 target=head_revision_git_hash, target_type=TargetType.REVISION
@@ -562,54 +555,19 @@ class BazaarLoader(BaseLoader):
 
         return from_disk.Content({"sha1_git": content.sha1_git, "perms": perms})
 
-    def _get_bzr_revs_to_load(self) -> List[BzrRevisionId]:
+    def _get_bzr_revs_to_load(self) -> Generator[BzrRevision, None, None]:
         assert self.branch is not None
-        self.log.debug("Getting fully sorted revision tree")
-        if self.head_revision_id == NULL_REVISION:
-            return []
-        # bazaar's model doesn't allow it to iterate on its graph from
-        # the bottom lazily, but basically all DAGs (especially bzr ones)
-        # are small enough to fit in RAM.
-        ancestors_iter = self._iterate_ancestors(self.head_revision_id)
-        ancestry = []
-        for rev, parents in ancestors_iter:
-            if parents is None:
-                # Filter out ghosts, they scare the `TopoSorter`.
-                # Store them to later catch exceptions about missing parent revision
-                self._ghosts.add(rev)
-                continue
-            ancestry.append((rev, parents))
-
-        sorter = tsort.TopoSorter(ancestry)
-        all_revisions = sorter.sorted()
         if self._latest_head is not None:
-            # Breezy does not offer a generic querying system, so we do the
-            # filtering ourselves, which is simple enough given that bzr does
-            # not have multiple heads per branch
-            found = False
-            new_revisions = []
-            # Filter out revisions until we reach the one we've already seen
-            for rev in all_revisions:
-                if not found:
-                    if rev == self._latest_head:
-                        found = True
-                else:
-                    new_revisions.append(rev)
-            if not found and all_revisions:
-                # The previously saved head has been uncommitted, reload
-                # everything
-                msg = "Previous head (%s) not found, loading all revisions"
-                self.log.debug(msg, self._latest_head)
-                return all_revisions
-            return new_revisions
-        return all_revisions
-
-    def _iterate_ancestors(
-        self, revision_id: BzrRevisionId
-    ) -> Iterator[Tuple[BzrRevisionId, Tuple[BzrRevisionId]]]:
-        """Return an iterator of this revision's ancestors"""
-        assert self.branch is not None
-        return self.branch.repository.get_graph().iter_ancestry([revision_id])
+            common_revisions = [self._latest_head]
+        else:
+            common_revisions = []
+        # there's nothing to fetch in NULL_REVISION
+        common_revisions.append(NULL_REVISION)
+        graph = self.branch.repository.get_graph()
+        todo = graph.find_unique_ancestors(
+            self.branch.last_revision(), common_revisions
+        )
+        return graph.iter_topo_order(todo)
 
     # We want to cache at most the current revision and the last, no need to
     # take cache more than this.
@@ -682,7 +640,15 @@ class BazaarLoader(BaseLoader):
             try:
                 revision_id = self._get_revision_id_from_bzr_id(parent_id)
             except LookupError:
-                if parent_id in self._ghosts:
+                assert self.branch is not None
+                # Check if this is a ghost:
+                if (
+                    not self.branch.repository.get_parent_map([parent_id]).get(
+                        parent_id
+                    )
+                    == ()
+                ):
+                    self._ghosts.add(parent_id)
                     # We can't store ghosts in any meaningful way (yet?). They
                     # have no contents by definition, and they're pretty rare,
                     # so just ignore them.
@@ -706,14 +672,6 @@ class BazaarLoader(BaseLoader):
             msg = "Expected 1 match from storage for bzr node %r, got %d"
             raise LookupError(msg % (bzr_id.hex(), len(from_storage)))
         return from_storage[0].target.object_id
-
-    @property
-    def head_revision_id(self) -> BzrRevisionId:
-        """Returns the Bazaar revision id of the branch's head.
-
-        Bazaar branches do not have multiple heads."""
-        assert self.branch is not None
-        return self.branch.last_revision()
 
     @property
     def tags(self) -> Optional[Dict[bytes, BzrRevisionId]]:
