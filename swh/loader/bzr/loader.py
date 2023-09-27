@@ -17,10 +17,9 @@ import tempfile
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, TypeVar, Union
 
 from breezy import errors as bzr_errors
-from breezy import repository, tsort
+from breezy import tsort
 from breezy.branch import Branch as BzrBranch
 from breezy.builtins import cmd_branch, cmd_upgrade
-from breezy.controldir import ControlDir
 from breezy.export import export
 from breezy.revision import NULL_REVISION
 from breezy.revision import Revision as BzrRevision
@@ -168,7 +167,7 @@ class BazaarLoader(BaseLoader):
 
         self.visit_date = visit_date or self.visit_date
         self.directory = directory
-        self.repo: Optional[repository.Repository] = None
+        self.branch: Optional[BzrBranch] = None
         self.check_revision = check_revision
 
     def pre_cleanup(self) -> None:
@@ -241,11 +240,8 @@ class BazaarLoader(BaseLoader):
         if self.branch is not None:
             self.branch.unlock()
 
-    def get_repo_and_branch(self) -> Tuple[repository.Repository, BzrBranch]:
-        _, branch, repo, _ = ControlDir.open_containing_tree_branch_or_repository(
-            self._repo_directory
-        )
-        return repo, branch
+    def get_branch(self) -> BzrBranch:
+        return BzrBranch.open(self._repo_directory)
 
     def run_upgrade(self):
         """Upgrade both repository and branch to the most recent supported version
@@ -286,8 +282,8 @@ class BazaarLoader(BaseLoader):
             self.log.debug("Using local directory '%s'", self.directory)
             self._repo_directory = self.directory
 
-        repo, branch = self.get_repo_and_branch()
-        repository_format = repo._format.get_format_string()
+        branch = self.get_branch()
+        repository_format = branch.repository._format.get_format_string()
 
         if not repository_format == expected_repository_format:
             if repository_format in older_repository_formats:
@@ -296,7 +292,7 @@ class BazaarLoader(BaseLoader):
                     repository_format.decode("ascii").strip("\n"),
                 )
                 self.run_upgrade()
-                repo, branch = self.get_repo_and_branch()
+                branch = self.get_branch()
             else:
                 raise UnknownRepositoryFormat()
 
@@ -305,21 +301,17 @@ class BazaarLoader(BaseLoader):
             # support tags
             self.log.debug("Branch does not support tags, upgrading")
             self.run_upgrade()
-            repo, branch = self.get_repo_and_branch()
-            # We could set the branch here directly, but we want to run the
-            # sanity checks in the `self.branch` property, so let's make sure
-            # we invalidate the "cache".
-            self._branch = None
+            branch = self.get_branch()
 
-        self.branch.lock_read()
-        self.repo = repo
+        branch.lock_read()
+        self.branch = branch
         self.head_revision_id  # set the property
         self.tags  # set the property
         return False
 
     def store_data(self) -> None:
         """Store fetched data in the database."""
-        assert self.repo is not None
+        assert self.branch is not None
         assert self.tags is not None
 
         # Insert revisions using a topological sorting
@@ -332,7 +324,7 @@ class BazaarLoader(BaseLoader):
 
         length_ingested_revs = 0
         for rev in revs:
-            self.store_revision(self.repo.get_revision(rev))
+            self.store_revision(self.branch.repository.get_revision(rev))
             length_ingested_revs += 1
 
         if length_ingested_revs == 0:
@@ -426,7 +418,7 @@ class BazaarLoader(BaseLoader):
 
         revno = (
             self.branch.revision_id_to_dotted_revno(bzr_rev.revision_id)[0]
-            if self.repo
+            if self.branch
             else None
         )
 
@@ -571,7 +563,7 @@ class BazaarLoader(BaseLoader):
         return from_disk.Content({"sha1_git": content.sha1_git, "perms": perms})
 
     def _get_bzr_revs_to_load(self) -> List[BzrRevisionId]:
-        assert self.repo is not None
+        assert self.branch is not None
         self.log.debug("Getting fully sorted revision tree")
         if self.head_revision_id == NULL_REVISION:
             return []
@@ -616,15 +608,15 @@ class BazaarLoader(BaseLoader):
         self, revision_id: BzrRevisionId
     ) -> Iterator[Tuple[BzrRevisionId, Tuple[BzrRevisionId]]]:
         """Return an iterator of this revision's ancestors"""
-        assert self.repo is not None
-        return self.repo.get_graph().iter_ancestry([revision_id])
+        assert self.branch is not None
+        return self.branch.repository.get_graph().iter_ancestry([revision_id])
 
     # We want to cache at most the current revision and the last, no need to
     # take cache more than this.
     @lru_cache(maxsize=2)
     def _get_revision_tree(self, rev: BzrRevisionId) -> Tree:
-        assert self.repo is not None
-        return self.repo.revision_tree(rev)
+        assert self.branch is not None
+        return self.branch.repository.revision_tree(rev)
 
     def _store_tree(self, bzr_rev: BzrRevision) -> Sha1Git:
         """Save the current in-memory tree to storage."""
@@ -716,29 +708,16 @@ class BazaarLoader(BaseLoader):
         return from_storage[0].target.object_id
 
     @property
-    def branch(self) -> BzrBranch:
-        """Returns the only branch in the current repository.
-
-        Bazaar branches can be assimilated to repositories in other VCS like
-        Git or Mercurial. By contrast, a Bazaar repository is just a store of
-        revisions to optimize disk usage, with no particular semantics."""
-        assert self.repo is not None
-        branches = list(self.repo.find_branches(using=True))
-        msg = "Expected only 1 branch in the repository, got %d"
-        assert len(branches) == 1, msg % len(branches)
-        self._branch = branches[0]
-        return branches[0]
-
-    @property
     def head_revision_id(self) -> BzrRevisionId:
         """Returns the Bazaar revision id of the branch's head.
 
         Bazaar branches do not have multiple heads."""
+        assert self.branch is not None
         return self.branch.last_revision()
 
     @property
     def tags(self) -> Optional[Dict[bytes, BzrRevisionId]]:
-        assert self.repo is not None
+        assert self.branch is not None
         if self._tags is None:
             self._tags = {
                 n.encode(): r for n, r in self.branch.tags.get_tag_dict().items()
