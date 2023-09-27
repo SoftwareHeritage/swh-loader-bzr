@@ -238,8 +238,8 @@ class BazaarLoader(BaseLoader):
         return extids
 
     def cleanup(self) -> None:
-        if self.repo is not None:
-            self.repo.unlock()
+        if self.branch is not None:
+            self.branch.unlock()
 
     def get_repo_and_branch(self) -> Tuple[repository.Repository, BzrBranch]:
         _, branch, repo, _ = ControlDir.open_containing_tree_branch_or_repository(
@@ -311,8 +311,8 @@ class BazaarLoader(BaseLoader):
             # we invalidate the "cache".
             self._branch = None
 
+        self.branch.lock_read()
         self.repo = repo
-        self.repo.lock_read()
         self.head_revision_id  # set the property
         self.tags  # set the property
         return False
@@ -734,11 +734,7 @@ class BazaarLoader(BaseLoader):
         """Returns the Bazaar revision id of the branch's head.
 
         Bazaar branches do not have multiple heads."""
-        assert self.repo is not None
-        if self._head_revision_id is None:
-            self._head_revision_id = self.branch.last_revision()
-        assert self._head_revision_id is not None
-        return BzrRevisionId(self._head_revision_id)
+        return self.branch.last_revision()
 
     @property
     def tags(self) -> Optional[Dict[bytes, BzrRevisionId]]:
