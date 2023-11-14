@@ -14,7 +14,7 @@ from functools import lru_cache, partial
 import itertools
 import os
 import tempfile
-from typing import Any, Dict, List, Optional, Set, Tuple, TypeVar, Union, Generator
+from typing import Any, Dict, Generator, List, Optional, Set, Tuple, TypeVar, Union
 
 from breezy import errors as bzr_errors
 from breezy.branch import Branch as BzrBranch
