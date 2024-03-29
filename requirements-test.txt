@@ -1,7 +1,7 @@
 dulwich
-pytest
+pytest >= 8.1
 pytest-mock
-swh.core[http] >= 0.0.61
-swh.scheduler[testing] >= 0.5.0
+swh.core[testing]
+swh.scheduler[testing]
 swh.storage[testing]
 testtools
