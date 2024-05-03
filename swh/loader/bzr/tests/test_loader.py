@@ -111,6 +111,11 @@ def test_store_revision_with_empty_or_none_committer(swh_storage, mocker, commit
         assert swh_rev.committer_date is None
 
 
+# workaround pytest 8.2.0 regression
+# https://github.com/pytest-dev/pytest/issues/12263
+setattr(TestCaseWithTransport, "runTest", lambda self: None)
+
+
 class TestBzrLoader(TestCaseWithTransport):
     @pytest.fixture(autouse=True)
     def fixtures(self, swh_storage, mocker, tmp_path):
