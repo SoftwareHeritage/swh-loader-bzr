@@ -40,7 +40,7 @@ from swh.model.model import (
     Sha1Git,
     Snapshot,
     SnapshotBranch,
-    TargetType,
+    SnapshotTargetType,
     Timestamp,
     TimestampWithTimezone,
 )
@@ -350,7 +350,7 @@ class BazaarLoader(BaseLoader):
             snp_target = self._get_revision_id_from_bzr_id(target)
             snapshot_branches[label] = SnapshotBranch(
                 target=self.store_release(tag_name, snp_target),
-                target_type=TargetType.RELEASE,
+                target_type=SnapshotTargetType.RELEASE,
             )
 
         if self.branch.last_revision() != NULL_REVISION:
@@ -358,11 +358,11 @@ class BazaarLoader(BaseLoader):
                 self.branch.last_revision()
             )
             snapshot_branches[b"trunk"] = SnapshotBranch(
-                target=head_revision_git_hash, target_type=TargetType.REVISION
+                target=head_revision_git_hash, target_type=SnapshotTargetType.REVISION
             )
             snapshot_branches[b"HEAD"] = SnapshotBranch(
                 target=b"trunk",
-                target_type=TargetType.ALIAS,
+                target_type=SnapshotTargetType.ALIAS,
             )
 
         snapshot = Snapshot(branches=snapshot_branches)
