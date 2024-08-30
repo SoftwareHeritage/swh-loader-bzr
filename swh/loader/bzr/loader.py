@@ -219,9 +219,9 @@ class BazaarLoader(BaseLoader):
             extid_version=EXTID_VERSION,
         ):
             extids.append(extid)
-            self._revision_id_to_sha1git[
-                BzrRevisionId(extid.extid)
-            ] = extid.target.object_id
+            self._revision_id_to_sha1git[BzrRevisionId(extid.extid)] = (
+                extid.target.object_id
+            )
 
         if extids:
             # Filter out dangling extids, we need to load their target again
