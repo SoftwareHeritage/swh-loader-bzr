@@ -687,7 +687,7 @@ class TestBzrLoader(TestCaseWithTransport):
 
         repo_url = self.get_url()
         res = BazaarLoader(self.swh_storage, repo_url, directory=repo_url).load()
-        assert res == {"status": "failed"}
+        assert res["status"] == "failed"
 
     def test_empty_dirs_are_preserved(self):
         working_tree = self.make_branch_and_tree(".")
