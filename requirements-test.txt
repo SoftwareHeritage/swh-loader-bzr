@@ -1,3 +1,4 @@
+celery-types
 dulwich
 pytest >= 8.1
 pytest-mock
