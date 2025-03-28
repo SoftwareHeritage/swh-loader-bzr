@@ -5,5 +5,5 @@ pytest-mock
 swh.core[testing]
 swh.loader.core[testing]
 swh.scheduler[testing]
-swh.storage[testing]
+swh.storage[pytest] >= 3.1.0
 testtools
