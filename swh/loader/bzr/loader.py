@@ -1,4 +1,4 @@
-# Copyright (C) 2021-2023  The Software Heritage developers
+# Copyright (C) 2021-2025  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -38,6 +38,7 @@ from swh.model.model import (
     Revision,
     RevisionType,
     Sha1Git,
+    SkippedContent,
     Snapshot,
     SnapshotBranch,
     SnapshotTargetType,
@@ -418,7 +419,9 @@ class BazaarLoader(BaseLoader):
         if self.check_revision and revno and revno % self.check_revision == 0:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 export(self._get_revision_tree(bzr_rev.revision_id), tmp_dir)
-                exported_dir = from_disk.Directory.from_disk(path=tmp_dir.encode())
+                exported_dir = from_disk.Directory.from_disk(
+                    path=tmp_dir.encode(), max_content_length=self.max_content_size
+                )
                 if directory != exported_dir.hash:
                     raise ValueError(
                         f"Hash tree computation divergence detected at revision {revno}"
@@ -549,11 +552,16 @@ class BazaarLoader(BaseLoader):
             assert symlink_target is not None
             data = symlink_target.encode()
 
-        content = Content.from_data(data)
+        if self.max_content_size is not None and len(data) > self.max_content_size:
+            skipped_content = SkippedContent.from_data(data, reason="Content too large")
+            self.storage.skipped_content_add([skipped_content])
+            sha1_git = skipped_content.sha1_git
+        else:
+            content = Content.from_data(data)
+            self.storage.content_add([content])
+            sha1_git = content.sha1_git
 
-        self.storage.content_add([content])
-
-        return from_disk.Content({"sha1_git": content.sha1_git, "perms": perms})
+        return from_disk.Content({"sha1_git": sha1_git, "perms": perms})
 
     def _get_bzr_revs_to_load(self) -> Generator[BzrRevision, None, None]:
         assert self.branch is not None

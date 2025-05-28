@@ -1,4 +1,4 @@
-# Copyright (C) 2022-2023  The Software Heritage developers
+# Copyright (C) 2022-2025  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -851,3 +851,28 @@ class TestBzrLoader(TestCaseWithTransport):
         ]
         assert submodule_entry
         assert submodule_entry[0]["target"] == Directory(entries=()).id
+
+    def test_max_content_size(self):
+        """Contents whose size is greater than five byte should be skipped."""
+        repo_url = self.build_nominal_repo()
+        loader = BazaarLoader(
+            self.swh_storage,
+            repo_url,
+            directory=repo_url,
+            check_revision=1,
+            max_content_size=5,
+        )
+
+        res = loader.load()
+        assert res == {"status": "eventful"}
+        stats = get_stats(self.swh_storage)
+        assert stats == {
+            "content": 4,
+            "directory": 8,
+            "origin": 1,
+            "origin_visit": 1,
+            "release": 3,
+            "revision": 6,
+            "skipped_content": 3,
+            "snapshot": 1,
+        }
